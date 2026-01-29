@@ -1,0 +1,10 @@
+{
+    "camera_source": "0",
+    "enable_face_rec": false,
+    "enable_people_count": true,
+    "face_cooldown": 10.0,
+    "log_interval": 5.0,
+    "enable_telegram": true,
+    "telegram_token": "8300491532:AAEb1MntR56HUuir7CSntEPbRfIt-klwjEw",
+    "telegram_chat_id": "878827533"
+}

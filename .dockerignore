@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+platform_data.db
+known_faces/
