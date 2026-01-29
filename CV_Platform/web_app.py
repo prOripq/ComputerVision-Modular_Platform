@@ -61,7 +61,7 @@ def send_telegram_alert(token, chat_id, message, image_frame):
     try:
         ret, buffer = cv2.imencode('.jpg', image_frame)
         if not ret: return
-        url = f"https://api.telegram.org/bot{token}/sendPhoto"
+        url = f"Telegram bot API"
         files = {'photo': buffer.tobytes()}
         data = {'chat_id': chat_id, 'caption': message}
         requests.post(url, files=files, data=data)
