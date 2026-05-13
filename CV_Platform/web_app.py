@@ -144,6 +144,7 @@ def init_system() -> None:
 
 def _send_telegram_alert(token: str, chat_id: str, message: str, image_frame) -> None:
     try:
+<<<<<<< HEAD
         ret, buffer = cv2.imencode(".jpg", image_frame)
         if not ret:
             return
@@ -160,6 +161,16 @@ def _send_telegram_alert(token: str, chat_id: str, message: str, image_frame) ->
 # ---------------------------------------------------------------------------
 # Генератор кадров
 # ---------------------------------------------------------------------------
+=======
+        ret, buffer = cv2.imencode('.jpg', image_frame)
+        if not ret: return
+        url = f"Telegram bot API"
+        files = {'photo': buffer.tobytes()}
+        data = {'chat_id': chat_id, 'caption': message}
+        requests.post(url, files=files, data=data)
+    except Exception as e:
+        print(f"Ошибка TG: {e}")
+>>>>>>> d4bc81e1a3bb46e0a8be8cc1fe0ff014574d2b16
 
 def generate_frames():
     global current_people_count
@@ -498,5 +509,9 @@ def api_analytics():
 
 if __name__ == "__main__":
     init_system()
+<<<<<<< HEAD
     zone_detector = ZoneDetector()
     app.run(host="0.0.0.0", port=5000, debug=False)
+=======
+    app.run(host='0.0.0.0', port=5000, debug=False)
+>>>>>>> d4bc81e1a3bb46e0a8be8cc1fe0ff014574d2b16

@@ -4,6 +4,7 @@
     "enable_people_count": true,
     "face_cooldown": 10.0,
     "log_interval": 5.0,
+<<<<<<< HEAD
     "telegram_token": "8300491532:AAEb1MntR56HUuir7CSntEPbRfIt-klwjEw",
     "telegram_chat_id": "878827533",
     "enable_telegram": false,
@@ -16,3 +17,9 @@
     ],
     "enable_zone_logic": false
 }
+=======
+    "enable_telegram": true,
+    "telegram_token": "",
+    "telegram_chat_id": ""
+}
+>>>>>>> d4bc81e1a3bb46e0a8be8cc1fe0ff014574d2b16
