@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics — AI Security Guard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg:        #080b0f;
+            --surface:   #0d1117;
+            --border:    #1a2332;
+            --amber:     #e8a030;
+            --amber-dim: rgba(232, 160, 48, 0.10);
+            --green:     #22c55e;
+            --green-dim: rgba(34, 197, 94, 0.10);
+            --blue:      #3b82f6;
+            --blue-dim:  rgba(59, 130, 246, 0.10);
+            --red:       #ef4444;
+            --red-dim:   rgba(239, 68, 68, 0.10);
+            --text:      #c9d1d9;
+            --muted:     #4a5568;
+            --mono:      'Share Tech Mono', monospace;
+            --sans:      'Rajdhani', sans-serif;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* ── HEADER ── */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
+        .brand-icon {
+            width: 32px; height: 32px;
+            border: 1px solid var(--amber);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--amber); font-size: 14px; position: relative;
+        }
+        .brand-icon::before { content: ''; position: absolute; inset: 2px; border: 1px solid rgba(232,160,48,0.3); }
+        .brand-name { font-family: var(--mono); font-size: 13px; letter-spacing: 3px; color: var(--amber); }
+        .brand-sub  { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+
+        nav { display: flex; align-items: center; gap: 4px; }
+        .nav-link {
+            padding: 7px 14px;
+            font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+            color: var(--muted); text-decoration: none; text-transform: uppercase;
+            border: 1px solid transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .nav-link:hover { color: var(--text); border-color: var(--border); }
+        .nav-link.active { color: var(--amber); border-color: rgba(232,160,48,0.3); background: var(--amber-dim); }
+
+        /* ── LAYOUT ── */
+        main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+
+        /* ── PAGE HEADER ── */
+        .page-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 28px;
+        }
+        .page-title-wrap { display: flex; align-items: center; gap: 14px; }
+        .page-icon {
+            width: 40px; height: 40px;
+            border: 1px solid var(--amber);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--amber); font-size: 16px;
+        }
+        .page-title { font-family: var(--mono); font-size: 14px; letter-spacing: 3px; color: var(--amber); text-transform: uppercase; }
+        .page-sub   { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; margin-top: 3px; }
+
+        /* Period selector */
+        .period-selector { display: flex; gap: 4px; }
+        .period-btn {
+            padding: 7px 14px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .period-btn:hover { border-color: var(--amber); color: var(--amber); }
+        .period-btn.active { background: var(--amber-dim); border-color: rgba(232,160,48,0.4); color: var(--amber); }
+
+        /* ── SUMMARY CARDS ── */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 18px 20px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .summary-card::after {
+            content: ''; position: absolute;
+            top: 0; left: 0; width: 3px; height: 100%;
+        }
+        .summary-card.c-amber::after { background: var(--amber); }
+        .summary-card.c-green::after { background: var(--green); }
+        .summary-card.c-blue::after  { background: var(--blue); }
+        .summary-card.c-red::after   { background: var(--red); }
+        .summary-card.c-purple::after { background: #a855f7; }
+
+        .summary-label {
+            font-family: var(--mono); font-size: 9px;
+            letter-spacing: 2px; color: var(--muted);
+            text-transform: uppercase; margin-bottom: 10px;
+        }
+        .summary-value {
+            font-family: var(--mono); font-size: 28px; line-height: 1;
+        }
+        .summary-card.c-amber .summary-value { color: var(--amber); }
+        .summary-card.c-green .summary-value { color: var(--green); }
+        .summary-card.c-blue  .summary-value { color: var(--blue); }
+        .summary-card.c-red   .summary-value { color: var(--red); }
+        .summary-card.c-purple .summary-value { color: #a855f7; }
+
+        .summary-icon {
+            position: absolute; right: 16px; top: 50%;
+            transform: translateY(-50%);
+            font-size: 24px; opacity: 0.06;
+        }
+
+        /* ── CHARTS GRID ── */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .charts-row.full { grid-template-columns: 1fr; }
+
+        .chart-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 0;
+            overflow: hidden;
+        }
+        .chart-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .chart-title {
+            font-family: var(--mono); font-size: 10px;
+            letter-spacing: 2px; color: var(--muted); text-transform: uppercase;
+        }
+        .chart-badge {
+            font-family: var(--mono); font-size: 9px;
+            padding: 3px 8px; letter-spacing: 1px;
+            background: var(--amber-dim);
+            color: var(--amber);
+            border: 1px solid rgba(232,160,48,0.2);
+        }
+        .chart-body { padding: 20px; position: relative; }
+
+        /* ── TOP FACES TABLE ── */
+        .faces-table { width: 100%; border-collapse: collapse; }
+        .faces-table th {
+            font-family: var(--mono); font-size: 9px;
+            letter-spacing: 2px; color: var(--muted);
+            text-transform: uppercase; text-align: left;
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .faces-table td {
+            padding: 12px 20px;
+            border-bottom: 1px solid rgba(26,35,50,0.5);
+            font-size: 14px; font-weight: 500;
+        }
+        .faces-table tr:last-child td { border-bottom: none; }
+        .faces-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .rank-badge {
+            font-family: var(--mono); font-size: 11px;
+            color: var(--muted); min-width: 28px; display: inline-block;
+        }
+        .rank-badge.top1 { color: var(--amber); }
+        .rank-badge.top2 { color: #94a3b8; }
+        .rank-badge.top3 { color: #b45309; }
+
+        .count-bar-wrap {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .count-bar {
+            height: 4px; background: var(--border);
+            flex: 1; position: relative; overflow: hidden;
+        }
+        .count-bar-fill {
+            position: absolute; top: 0; left: 0; height: 100%;
+            background: var(--amber);
+            transition: width 0.6s ease;
+        }
+        .count-num {
+            font-family: var(--mono); font-size: 12px;
+            color: var(--amber); min-width: 28px; text-align: right;
+        }
+        .last-seen-text {
+            font-family: var(--mono); font-size: 10px; color: var(--muted);
+        }
+
+        /* Loading overlay */
+        .loading {
+            display: flex; align-items: center; justify-content: center;
+            padding: 60px 20px;
+            font-family: var(--mono); font-size: 11px;
+            color: var(--muted); letter-spacing: 2px;
+            gap: 10px;
+        }
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--amber);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .no-data {
+            padding: 40px 20px; text-align: center;
+            font-family: var(--mono); font-size: 11px;
+            color: var(--muted); letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="/" class="brand">
+        <div class="brand-icon"><i class="fas fa-shield-halved"></i></div>
+        <div>
+            <div class="brand-name">AI Security Guard</div>
+            <div class="brand-sub">Computer Vision Platform</div>
+        </div>
+    </a>
+    <nav>
+        <a href="/"          class="nav-link">// Monitor</a>
+        <a href="/analytics" class="nav-link active">// Analytics</a>
+        <a href="/zones"       class="nav-link">// Зоны</a>
+        <a href="/settings"  class="nav-link">// Settings</a>
+        <a href="/logout"    class="nav-link">// Logout</a>
+    </nav>
+</header>
+
+<main>
+    <div class="page-header">
+        <div class="page-title-wrap">
+            <div class="page-icon"><i class="fas fa-chart-line"></i></div>
+            <div>
+                <div class="page-title">Analytics</div>
+                <div class="page-sub" id="periodLabel">Loading...</div>
+            </div>
+        </div>
+        <div class="period-selector">
+            <button class="period-btn active" data-days="7">7 days</button>
+            <button class="period-btn" data-days="14">14 days</button>
+            <button class="period-btn" data-days="30">30 days</button>
+        </div>
+    </div>
+
+    <div class="summary-grid">
+        <div class="summary-card c-green">
+            <div class="summary-label">Max People in Frame</div>
+            <div class="summary-value" id="s-max-people">—</div>
+            <i class="fas fa-person-walking summary-icon"></i>
+        </div>
+        <div class="summary-card c-amber">
+            <div class="summary-label">Unique Faces</div>
+            <div class="summary-value" id="s-unique-faces">—</div>
+            <i class="fas fa-users summary-icon"></i>
+        </div>
+        <div class="summary-card c-red">
+            <div class="summary-label">Recognitions</div>
+            <div class="summary-value" id="s-face-events">—</div>
+            <i class="fas fa-user-check summary-icon"></i>
+        </div>
+        <div class="summary-card c-blue">
+            <div class="summary-label">Peak Hour</div>
+            <div class="summary-value" id="s-peak-hour">—</div>
+            <i class="fas fa-clock summary-icon"></i>
+        </div>
+        <div class="summary-card c-purple">
+            <div class="summary-label">Observations</div>
+            <div class="summary-value" id="s-observations">—</div>
+            <i class="fas fa-database summary-icon"></i>
+        </div>
+    </div>
+
+    <div class="charts-row">
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">// Attendance by Day</span>
+                <span class="chart-badge">MAX PEOPLE</span>
+            </div>
+            <div class="chart-body">
+                <div id="dailyLoading" class="loading"><div class="spinner"></div>LOADING...</div>
+                <canvas id="dailyChart" style="display:none"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">// Face Recognitions by Day</span>
+                <span class="chart-badge">EVENTS</span>
+            </div>
+            <div class="chart-body">
+                <div id="facesDailyLoading" class="loading"><div class="spinner"></div>LOADING...</div>
+                <canvas id="facesDailyChart" style="display:none"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="charts-row">
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">// Average Load by Hour</span>
+                <span class="chart-badge">AVG PEOPLE</span>
+            </div>
+            <div class="chart-body">
+                <div id="hourlyLoading" class="loading"><div class="spinner"></div>LOADING...</div>
+                <canvas id="hourlyChart" style="display:none"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-header">
+                <span class="chart-title">// Top Faces</span>
+                <span class="chart-badge">FREQUENCY</span>
+            </div>
+            <div id="topFacesContainer">
+                <div id="topFacesLoading" class="loading"><div class="spinner"></div>LOADING...</div>
+                <table class="faces-table" id="topFacesTable" style="display:none">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Frequency</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topFacesBody"></tbody>
+                </table>
+                <div id="topFacesEmpty" class="no-data" style="display:none">
+                    No recognition data available yet
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    // ── Global chart objects ──
+    let dailyChart, facesDailyChart, hourlyChart;
+    let currentDays = 7;
+
+    // ── Chart.js global settings ──
+    Chart.defaults.color = '#4a5568';
+    Chart.defaults.borderColor = '#1a2332';
+    Chart.defaults.font.family = "'Share Tech Mono', monospace";
+    Chart.defaults.font.size = 11;
+
+    const AMBER  = '#e8a030';
+    const GREEN  = '#22c55e';
+    const BLUE   = '#3b82f6';
+    const RED    = '#ef4444';
+    const PURPLE = '#a855f7';
+
+    function makeGradient(ctx, color) {
+        const grad = ctx.createLinearGradient(0, 0, 0, 300);
+        grad.addColorStop(0, color.replace(')', ', 0.35)').replace('rgb', 'rgba'));
+        grad.addColorStop(1, color.replace(')', ', 0.0)').replace('rgb', 'rgba'));
+        return grad;
+    }
+
+    // ── Load data ──
+    function loadAnalytics(days) {
+        fetch(`/api/analytics?days=${days}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) return;
+                renderSummary(data.summary);
+                renderDailyChart(data.daily);
+                renderFacesDailyChart(data.daily);
+                renderHourlyChart(data.hourly);
+                renderTopFaces(data.top_faces);
+                updatePeriodLabel(days);
+            })
+            .catch(err => console.error('Analytics error:', err));
+    }
+
+    // ── Summary Cards ──
+    function renderSummary(s) {
+        animateNumber('s-max-people',    s.max_people);
+        animateNumber('s-unique-faces',  s.unique_faces);
+        animateNumber('s-face-events',   s.total_face_events);
+        animateNumber('s-observations',  s.total_observations);
+        document.getElementById('s-peak-hour').textContent = s.peak_hour;
+    }
+
+    function animateNumber(id, target) {
+        const el = document.getElementById(id);
+        const start = parseInt(el.textContent) || 0;
+        const duration = 600;
+        const startTime = performance.now();
+        function step(now) {
+            const p = Math.min((now - startTime) / duration, 1);
+            el.textContent = Math.round(start + (target - start) * easeOut(p));
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+    function updatePeriodLabel(days) {
+        const now = new Date();
+        const from = new Date(now - days * 86400000);
+        document.getElementById('periodLabel').textContent =
+            `${from.toLocaleDateString('en-US')} — ${now.toLocaleDateString('en-US')}`;
+    }
+
+    // ── Daily Attendance Chart ──
+    function renderDailyChart(daily) {
+        document.getElementById('dailyLoading').style.display = 'none';
+        const canvas = document.getElementById('dailyChart');
+        canvas.style.display = 'block';
+
+        const labels = daily.map(d => formatDate(d.date));
+        const values = daily.map(d => d.max_people);
+
+        if (dailyChart) dailyChart.destroy();
+        const ctx = canvas.getContext('2d');
+        dailyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Max People',
+                    data: values,
+                    backgroundColor: `rgba(34, 197, 94, 0.25)`,
+                    borderColor: GREEN,
+                    borderWidth: 1,
+                    borderRadius: 2,
+                }]
+            },
+            options: chartOptions('People'),
+        });
+    }
+
+    // ── Daily Recognitions Chart ──
+    function renderFacesDailyChart(daily) {
+        document.getElementById('facesDailyLoading').style.display = 'none';
+        const canvas = document.getElementById('facesDailyChart');
+        canvas.style.display = 'block';
+
+        const labels = daily.map(d => formatDate(d.date));
+        const values = daily.map(d => d.face_events);
+
+        if (facesDailyChart) facesDailyChart.destroy();
+        const ctx = canvas.getContext('2d');
+        facesDailyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Recognitions',
+                    data: values,
+                    borderColor: RED,
+                    backgroundColor: `rgba(239, 68, 68, 0.15)`,
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: RED,
+                    fill: true,
+                    tension: 0.3,
+                }]
+            },
+            options: chartOptions('Events'),
+        });
+    }
+
+    // ── Hourly Chart ──
+    function renderHourlyChart(hourly) {
+        document.getElementById('hourlyLoading').style.display = 'none';
+        const canvas = document.getElementById('hourlyChart');
+        canvas.style.display = 'block';
+
+        const labels = hourly.map(h => `${String(h.hour).padStart(2,'0')}:00`);
+        const values = hourly.map(h => h.avg_people);
+
+        if (hourlyChart) hourlyChart.destroy();
+        const ctx = canvas.getContext('2d');
+
+        // Find peak hour and highlight the bar
+        const maxVal = Math.max(...values);
+        const bgColors = values.map(v =>
+            v === maxVal && v > 0
+                ? `rgba(232, 160, 48, 0.5)`
+                : `rgba(59, 130, 246, 0.2)`
+        );
+        const borderColors = values.map(v =>
+            v === maxVal && v > 0 ? AMBER : BLUE
+        );
+
+        hourlyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Avg People',
+                    data: values,
+                    backgroundColor: bgColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    borderRadius: 2,
+                }]
+            },
+            options: {
+                ...chartOptions('People'),
+                plugins: {
+                    ...chartOptions('People').plugins,
+                    tooltip: {
+                        callbacks: {
+                            title: items => `Hour: ${items[0].label}`,
+                            label: item => ` Average: ${item.raw} people`,
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Top Faces ──
+    function renderTopFaces(faces) {
+        document.getElementById('topFacesLoading').style.display = 'none';
+
+        if (!faces || faces.length === 0) {
+            document.getElementById('topFacesEmpty').style.display = 'block';
+            return;
+        }
+
+        const table = document.getElementById('topFacesTable');
+        const tbody = document.getElementById('topFacesBody');
+        const maxCount = faces[0].count;
+
+        table.style.display = 'table';
+        tbody.innerHTML = '';
+
+        faces.forEach((face, i) => {
+            const rankClass = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+            const pct = maxCount > 0 ? (face.count / maxCount * 100).toFixed(0) : 0;
+            const lastSeen = face.last_seen ? face.last_seen.split(' ')[0] : '—';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span class="rank-badge ${rankClass}">${String(i+1).padStart(2,'0')}</span></td>
+                <td><strong>${escHtml(face.name)}</strong></td>
+                <td>
+                    <div class="count-bar-wrap">
+                        <div class="count-bar">
+                            <div class="count-bar-fill" style="width:${pct}%"></div>
+                        </div>
+                        <span class="count-num">${face.count}</span>
+                    </div>
+                </td>
+                <td><span class="last-seen-text">${lastSeen}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ── Helpers ──
+    function chartOptions(yLabel) {
+        return {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#0d1117',
+                    borderColor: '#1a2332',
+                    borderWidth: 1,
+                    titleColor: '#e8a030',
+                    bodyColor: '#c9d1d9',
+                    padding: 10,
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(26,35,50,0.5)' },
+                    ticks: { maxRotation: 45 }
+                },
+                y: {
+                    grid: { color: 'rgba(26,35,50,0.5)' },
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 },
+                    title: {
+                        display: true,
+                        text: yLabel,
+                        color: '#4a5568',
+                        font: { size: 10 }
+                    }
+                }
+            }
+        };
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        const [, m, d] = dateStr.split('-');
+        return `${m}/${d}`; // Adapted to standard US format (Month/Day)
+    }
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ── Period buttons ──
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentDays = parseInt(btn.dataset.days);
+
+            // Show loaders again
+            ['dailyLoading','facesDailyLoading','hourlyLoading','topFacesLoading'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.style.display = 'flex'; }
+            });
+            document.getElementById('dailyChart').style.display = 'none';
+            document.getElementById('facesDailyChart').style.display = 'none';
+            document.getElementById('hourlyChart').style.display = 'none';
+            document.getElementById('topFacesTable').style.display = 'none';
+            document.getElementById('topFacesEmpty').style.display = 'none';
+
+            loadAnalytics(currentDays);
+        });
+    });
+
+    // ── Start ──
+    loadAnalytics(currentDays);
+</script>
+</body>
+</html>

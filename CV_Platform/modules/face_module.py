@@ -1,115 +1,170 @@
 import cv2
 import numpy as np
 import os
+import logging
 from insightface.app import FaceAnalysis
 
-class FaceRecognizer:
-    def __init__(self, db_path='known_faces'):
-        print("Загрузка модели распознавания лиц (InsightFace)...")
-        # buffalo_l - это мощная модель, которая включает детекцию и распознавание
-        self.app = FaceAnalysis(name='buffalo_l')
-        # ctx_id=0 использовать видеокарту, -1 - процессор. 
-        # det_size - размер картинки для детектора (640x640 стандарт)
-        self.app.prepare(ctx_id=0, det_size=(640, 640)) 
-        
-        self.known_embeddings = [] # Тут храним цифровые слепки лиц
-        self.known_names = []      # Тут храним имена
-        
-        # Загружаем лица из папки
-        self.load_database(db_path)
+logger = logging.getLogger(__name__)
 
-    def load_database(self, path):
-        if not os.path.exists(path):
-            os.makedirs(path)
-            print(f"Папка {path} создана. Положите туда фото для распознавания.")
+
+class FaceRecognizer:
+    def __init__(
+        self,
+        db_path: str = "known_faces",
+        similarity_threshold: float = 0.55,
+        det_size: tuple[int, int] = (640, 640),
+        ctx_id: int | None = None,
+    ):
+        """
+        Args:
+            db_path:              Путь к папке с фотографиями известных лиц.
+            similarity_threshold: Порог cosine similarity для распознавания (0.0–1.0).
+                                  Рекомендуется 0.50–0.65. Ниже — больше ложных совпадений.
+            det_size:             Размер входа детектора YOLO внутри InsightFace.
+            ctx_id:               ID устройства: 0+ = GPU, -1 = CPU.
+                                  None = автодетект (GPU если доступен, иначе CPU).
+        """
+        if ctx_id is None:
+            try:
+                import onnxruntime as ort
+                providers = ort.get_available_providers()
+                ctx_id = 0 if "CUDAExecutionProvider" in providers else -1
+            except ImportError:
+                ctx_id = -1
+
+        device_label = f"GPU (ctx_id={ctx_id})" if ctx_id >= 0 else "CPU"
+        print(f"Загрузка InsightFace на {device_label}...")
+
+        self.app = FaceAnalysis(name="buffalo_l")
+        self.app.prepare(ctx_id=ctx_id, det_size=det_size)
+
+        self.db_path = db_path
+        self.similarity_threshold = similarity_threshold
+
+        # Хранится как матрица (N, embedding_dim) для быстрого np.dot
+        self._embeddings_matrix: np.ndarray = np.empty((0,))
+        self._names: list[str] = []
+
+        self.load_database()
+
+    # ------------------------------------------------------------------
+    # База данных
+    # ------------------------------------------------------------------
+
+    def load_database(self) -> None:
+        """Читает папку db_path и строит матрицу эмбеддингов."""
+        embeddings: list[np.ndarray] = []
+        names: list[str] = []
+
+        if not os.path.exists(self.db_path):
+            os.makedirs(self.db_path)
+            logger.warning("Папка '%s' не найдена — создана пустая.", self.db_path)
+            self._embeddings_matrix = np.empty((0,))
+            self._names = []
             return
 
-        print("Обучение на фотографиях из папки...")
-        for filename in os.listdir(path):
-            if filename.endswith(('.jpg', '.png', '.jpeg')):
-                filepath = os.path.join(path, filename)
-                img = cv2.imread(filepath)
-                if img is None: continue
-                
-                # Ищем лицо на фото
-                faces = self.app.get(img)
-                
-                if len(faces) > 0:
-                    # Берем первое найденное лицо и сохраняем его "код" (embedding)
-                    # normed_embedding - это уже готовый вектор для сравнения
-                    embedding = faces[0].normed_embedding
-                    name = filename.split('.')[0] # убираем расширение файла
-                    
-                    self.known_embeddings.append(embedding)
-                    self.known_names.append(name)
-                    print(f"Загружен пользователь: {name}")
-                else:
-                    print(f"В файле {filename} лица не найдены.")
+        print(f"Загрузка базы лиц из '{self.db_path}'...")
 
-    def process(self, frame):
-        # 1. Ищем все лица на кадре с камеры
-        faces = self.app.get(frame)
-        
-        # 2. Пробегаемся по каждому найденному лицу
-        for face in faces:
-            # Получаем координаты лица (bbox)
-            box = face.bbox.astype(int)
-            color = (0, 0, 255) # Красный (неизвестный)
-            name = "Unknown"
-            
-            # 3. Сравниваем с нашей базой
-            if self.known_embeddings:
-                # Считаем схожесть (dot product) текущего лица со всеми в базе
-                # Чем больше число, тем больше похоже.
-                current_emb = face.normed_embedding
-                sims = np.dot(self.known_embeddings, current_emb)
-                
-                # Находим индекс самого похожего лица
-                best_idx = np.argmax(sims)
-                score = sims[best_idx]
-                
-                # Если похожесть больше 0.5 (50%), считаем что узнали
-                if score > 0.5:
-                    name = f"{self.known_names[best_idx]} ({int(score*100)}%)"
-                    color = (0, 255, 0) # Зеленый (свой)
+        for filename in os.listdir(self.db_path):
+            if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
 
-            # 4. Рисуем рамку и имя
-            cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), color, 2)
-            cv2.putText(frame, name, (box[0], box[1] - 10), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            filepath = os.path.join(self.db_path, filename)
+            img = cv2.imread(filepath)
 
-        return frame
-    
-    def process_and_return_names(self, frame):
+            if img is None:
+                logger.warning("Не удалось прочитать файл: %s — пропущен.", filepath)
+                continue
+
+            faces = self.app.get(img)
+            name = os.path.splitext(filename)[0]
+
+            if len(faces) == 0:
+                logger.warning("Лицо не найдено в файле: %s — пропущен.", filename)
+                continue
+
+            if len(faces) > 1:
+                logger.warning(
+                    "В файле '%s' найдено %d лиц — используется первое.",
+                    filename,
+                    len(faces),
+                )
+
+            embeddings.append(faces[0].normed_embedding)
+            names.append(name)
+
+        self._names = names
+        self._embeddings_matrix = (
+            np.stack(embeddings) if embeddings else np.empty((0,))
+        )
+
+        print(f"База готова. Людей в базе: {len(self._names)}")
+
+    def refresh_database(self) -> None:
+        """Перезагружает базу (например, после добавления новых фото через веб-интерфейс)."""
+        self.load_database()
+
+    # ------------------------------------------------------------------
+    # Распознавание
+    # ------------------------------------------------------------------
+
+    def recognize(self, frame: np.ndarray) -> tuple[np.ndarray, list[str]]:
         """
-        То же самое, что process, но возвращает еще и список имен.
+        Находит и распознаёт лица на кадре.
+
+        Args:
+            frame: Кадр BGR (не мутируется).
+
+        Returns:
+            annotated_frame: Копия кадра с нарисованными боксами и подписями.
+            found_names:     Имена распознанных людей (без «Unknown»).
         """
-        faces = self.app.get(frame)
-        found_names = []
-        
+        annotated = frame.copy()
+        faces = self.app.get(annotated)
+        found_names: list[str] = []
+
         for face in faces:
             box = face.bbox.astype(int)
-            color = (0, 0, 255)
-            name = "Unknown"
-            
-            if self.known_embeddings:
-                current_emb = face.normed_embedding
-                sims = np.dot(self.known_embeddings, current_emb)
-                best_idx = np.argmax(sims)
-                score = sims[best_idx]
-                
-                if score > 0.5:
-                    name_full = self.known_names[best_idx]
-                    name = name_full # Просто имя для списка
-                    label = f"{name_full} ({int(score*100)}%)"
-                    color = (0, 255, 0)
-                    found_names.append(name) # <-- Добавляем в список
-                else:
-                    label = name
+            name, score = self._match(face.normed_embedding)
 
-            # Рисуем
-            cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), color, 2)
-            cv2.putText(frame, name if name == "Unknown" else label, 
-                        (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            if name is not None:
+                label = f"{name} ({int(score * 100)}%)"
+                color = (0, 255, 0)   # зелёный — найден
+                found_names.append(name)
+            else:
+                label = "Unknown"
+                color = (0, 0, 255)   # красный — не найден
 
-        return frame, found_names
+            cv2.rectangle(annotated, (box[0], box[1]), (box[2], box[3]), color, 2)
+            cv2.putText(
+                annotated,
+                label,
+                (box[0], box[1] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                color,
+                2,
+            )
+
+        return annotated, found_names
+
+    # ------------------------------------------------------------------
+    # Внутренние методы
+    # ------------------------------------------------------------------
+
+    def _match(
+        self, embedding: np.ndarray
+    ) -> tuple[str | None, float | None]:
+        
+        if len(self._names) == 0:
+            return None, None
+
+        # Матричное умножение: (N, D) · (D,) → (N,)
+        similarities = self._embeddings_matrix @ embedding
+        best_idx = int(np.argmax(similarities))
+        best_score = float(similarities[best_idx])
+
+        if best_score >= self.similarity_threshold:
+            return self._names[best_idx], best_score
+
+        return None, None

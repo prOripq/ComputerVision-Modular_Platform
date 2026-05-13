@@ -1,78 +1,98 @@
-import cv2
+import logging
 import time
+
+import cv2
+
+from core.database import DatabaseManager
 from core.video_loader import VideoLoader
-from core.database import DatabaseManager  # <-- НОВОЕ
 from modules.face_module import FaceRecognizer
 from modules.person_module import PersonDetector
 
+# ---------------------------------------------------------------------------
+# Логгер
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
 # Настройки
-VIDEO_SOURCE = 0 
-WINDOW_NAME = "CV Platform: DB Connected"
+# ---------------------------------------------------------------------------
+VIDEO_SOURCE = 0
+WINDOW_NAME = "CV Platform"
+LOG_INTERVAL_PEOPLE = 5.0   # Писать кол-во людей раз в N секунд
+FACE_COOLDOWN = 10.0        # Не писать одного человека чаще раза в N секунд
+CLEANUP_INTERVAL = 300.0    # Чистить last_seen_faces раз в N секунд
 
-# Настройки записи в БД
-LOG_INTERVAL_PEOPLE = 5.0  # Писать кол-во людей раз в 5 секунд
-FACE_COOLDOWN = 10.0       # Не писать одного и того же человека чаще чем раз в 10 сек
 
-def run_platform():
-    print("--- ЗАПУСК ПЛАТФОРМЫ ---")
-    
+# ---------------------------------------------------------------------------
+# Основная функция
+# ---------------------------------------------------------------------------
+
+def run_platform() -> None:
+    logger.info("--- ЗАПУСК ПЛАТФОРМЫ ---")
+
     loader = VideoLoader(VIDEO_SOURCE)
-    db = DatabaseManager() # <-- Подключаем базу
-    
+    db = DatabaseManager()
     person_tracker = PersonDetector()
-    face_recognizer = FaceRecognizer(db_path='known_faces')
-    
-    # Переменные для таймеров
+    face_recognizer = FaceRecognizer(db_path="known_faces")
+
     last_log_people_time = time.time()
-    last_seen_faces = {} # Словарь: {'Ivan': время_последней_записи}
+    last_cleanup_time = time.time()
+    last_seen_faces: dict[str, float] = {}  # {имя: время последней записи}
 
-    print(">>> СИСТЕМА ЗАПИСЫВАЕТ ДАННЫЕ <<<")
+    logger.info(">>> СИСТЕМА ЗАПИСЫВАЕТ ДАННЫЕ <<<")
 
-    while True:
-        frame = loader.get_frame()
-        if frame is None: break
+    try:
+        while True:
+            frame = loader.get_frame()
+            if frame is None:
+                logger.warning("Кадр не получен — завершение.")
+                break
 
-        # 1. ОБРАБОТКА (Люди)
-        frame, people_count = person_tracker.process(frame)
-        
-        # 2. ЛОГИКА ЗАПИСИ (Люди)
-        curr_time = time.time()
-        if (curr_time - last_log_people_time) > LOG_INTERVAL_PEOPLE:
-            # Пишем в базу
-            db.log_event("PEOPLE_STATS", str(people_count))
-            print(f"📊 Статистика: {people_count} чел.")
-            last_log_people_time = curr_time
+            curr_time = time.time()
 
-        # 3. ОБРАБОТКА (Лица)
-        # Нам нужно немного изменить логику вызова, чтобы получать имена, а не только картинку
-        # Но так как process() у нас просто рисует, давай схитрим.
-        # В идеале face_module должен возвращать список имен.
-        # Пока сделаем так: face_recognizer.process изменяет frame, но мы добавим метод get_names?
-        # Нет, давай проще: пусть process возвращает frame И список найденных имен.
-        
-        # ВНИМАНИЕ: Нам нужно зайти в face_module.py и чуть поправить его (см. шаг 4).
-        # Предположим, мы это сделали, и он возвращает names
-        frame, found_names = face_recognizer.process_and_return_names(frame)
-        
-        # 4. ЛОГИКА ЗАПИСИ (Лица)
-        for name in found_names:
-            if name == "Unknown": continue
-            
-            # Проверяем, когда видели его в последний раз
-            last_time = last_seen_faces.get(name, 0)
-            
-            if (curr_time - last_time) > FACE_COOLDOWN:
-                db.log_event("FACE_MATCH", name)
-                print(f"🚨 ОПОЗНАН: {name}")
-                last_seen_faces[name] = curr_time
+            # --- Подсчёт людей ---
+            frame, people_count = person_tracker.process(frame)
 
-        # Показываем
-        cv2.imshow(WINDOW_NAME, frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'): break
+            if (curr_time - last_log_people_time) > LOG_INTERVAL_PEOPLE:
+                db.log_event("PEOPLE_STATS", str(people_count))
+                logger.info("📊 Статистика: %d чел.", people_count)
+                last_log_people_time = curr_time
 
-    loader.release()
-    db.close()
-    cv2.destroyAllWindows()
+            # --- Распознавание лиц ---
+            frame, found_names = face_recognizer.recognize(frame)
+
+            for name in found_names:
+                last_time = last_seen_faces.get(name, 0.0)
+                if (curr_time - last_time) > FACE_COOLDOWN:
+                    db.log_event("FACE_MATCH", name)
+                    logger.info("🚨 ОПОЗНАН: %s", name)
+                    last_seen_faces[name] = curr_time
+
+            # --- Чистка устаревших записей ---
+            if (curr_time - last_cleanup_time) > CLEANUP_INTERVAL:
+                cutoff = curr_time - FACE_COOLDOWN * 10
+                last_seen_faces = {k: v for k, v in last_seen_faces.items() if v > cutoff}
+                last_cleanup_time = curr_time
+
+            # --- Отображение ---
+            cv2.imshow(WINDOW_NAME, frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                logger.info("Выход по нажатию 'q'.")
+                break
+
+    except Exception:
+        logger.exception("Необработанное исключение в основном цикле.")
+
+    finally:
+        loader.release()
+        db.close()
+        cv2.destroyAllWindows()
+        logger.info("Ресурсы освобождены. Платформа остановлена.")
+
 
 if __name__ == "__main__":
     run_platform()

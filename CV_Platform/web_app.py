@@ -1,400 +1,502 @@
 import json
+import logging
 import os
+import secrets
 import threading
-import requests
-from flask import Flask, Response, request, redirect, url_for, render_template_string
-import cv2
 import time
-from core.video_loader import VideoLoader
+from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
+from core.video_buffer import VideoBuffer
+from flask import send_from_directory
+from modules.zone_module import ZoneDetector, save_zones, load_zones, Zone, TripLine
+
+import cv2
+import requests
+from flask import (Flask, Response, jsonify, redirect, render_template,
+                   request, session, url_for)
+
+from auth import create_default_admin, verify_password
 from core.database import DatabaseManager
+from core.video_loader import VideoLoader
 from modules.face_module import FaceRecognizer
 from modules.person_module import PersonDetector
 
+# ---------------------------------------------------------------------------
+# Логгер
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Flask
+# ---------------------------------------------------------------------------
 app = Flask(__name__)
-CONFIG_FILE = 'config.json'
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
-# --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
-camera = None
-person_tracker = None
-face_recognizer = None
-db = None
-config = {}
-current_people_count = 0 
+CONFIG_FILE = "config.json"
 
-def load_config():
+DEFAULT_CONFIG: dict = {
+    "camera_source":       "0",
+    "enable_face_rec":     True,
+    "enable_people_count": True,
+    "face_cooldown":       15.0,
+    "log_interval":        5.0,
+    "telegram_token":      "",
+    "telegram_chat_id":    "",
+    "enable_telegram":     False,
+}
+
+# ---------------------------------------------------------------------------
+# Глобальное состояние
+# ---------------------------------------------------------------------------
+_state_lock = threading.Lock()
+video_buffer: VideoBuffer | None = None
+
+camera:          VideoLoader    | None = None
+person_tracker:  PersonDetector | None = None
+face_recognizer: FaceRecognizer | None = None
+db:              DatabaseManager | None = None
+zone_detector: ZoneDetector | None = None
+config:          dict = {}
+current_people_count: int = 0
+
+_tg_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tg_alert")
+
+
+# ---------------------------------------------------------------------------
+# Декоратор — защита роутов
+# ---------------------------------------------------------------------------
+
+def login_required(f):
+    """Перенаправляет на /login если пользователь не авторизован."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("authenticated"):
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ---------------------------------------------------------------------------
+# Конфиг
+# ---------------------------------------------------------------------------
+
+def load_config() -> dict:
     global config
     if not os.path.exists(CONFIG_FILE):
-        config = {
-            "camera_source": "0",
-            "enable_face_rec": True,
-            "enable_people_count": True,
-            "face_cooldown": 15.0,
-            "log_interval": 5.0,
-            "telegram_token": "",
-            "telegram_chat_id": "",
-            "enable_telegram": False
-        }
+        config = DEFAULT_CONFIG.copy()
+        _write_config(config)
     else:
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
+        with open(CONFIG_FILE, "r") as f:
+            loaded = json.load(f)
+        config = {**DEFAULT_CONFIG, **loaded}
+    return config
 
-def save_config(new_config):
+
+def _write_config(cfg: dict) -> None:
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=4)
+
+
+def save_config(new_config: dict) -> None:
     global config
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(new_config, f, indent=4)
+    _write_config(new_config)
     config = new_config
 
-def init_system():
-    global camera, person_tracker, face_recognizer, db, config
-    load_config()
-    print(f"--- ЗАГРУЗКА СИСТЕМЫ ---")
-    src = config['camera_source']
-    if src.isdigit(): src = int(src)
-    if camera is None: camera = VideoLoader(src)
-    if db is None: db = DatabaseManager()
-    if person_tracker is None: person_tracker = PersonDetector()
-    if face_recognizer is None: 
-        face_recognizer = FaceRecognizer(db_path='known_faces')
-        face_recognizer.app.prepare(ctx_id=0, det_size=(640, 640)) 
 
-def send_telegram_alert(token, chat_id, message, image_frame):
+# ---------------------------------------------------------------------------
+# Инициализация
+# ---------------------------------------------------------------------------
+
+def init_system() -> None:
+    global camera, person_tracker, face_recognizer, db, video_buffer
+
+    create_default_admin()
+    load_config()
+    logger.info("--- ЗАГРУЗКА СИСТЕМЫ ---")
+
+    src = config["camera_source"]
+    src = int(src) if str(src).isdigit() else src
+
+    camera          = VideoLoader(src)
+    db              = DatabaseManager()
+    person_tracker  = PersonDetector()
+    face_recognizer = FaceRecognizer(db_path="known_faces")
+
+    # Буфер: 10 сек до события + 10 сек после, клипы в папке clips/
+    video_buffer = VideoBuffer(
+        output_dir   = "clips",
+        pre_seconds  = 10.0,
+        post_seconds = 10.0,
+        fps          = 25.0,
+        cooldown     = 15.0,
+    )
+
+    logger.info("Система готова.")
+
+
+# ---------------------------------------------------------------------------
+# Telegram
+# ---------------------------------------------------------------------------
+
+def _send_telegram_alert(token: str, chat_id: str, message: str, image_frame) -> None:
     try:
-        ret, buffer = cv2.imencode('.jpg', image_frame)
-        if not ret: return
-        url = f"https://api.telegram.org/bot{token}/sendPhoto"
-        files = {'photo': buffer.tobytes()}
-        data = {'chat_id': chat_id, 'caption': message}
-        requests.post(url, files=files, data=data)
-    except Exception as e:
-        print(f"Ошибка TG: {e}")
+        ret, buffer = cv2.imencode(".jpg", image_frame)
+        if not ret:
+            return
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendPhoto",
+            files={"photo": buffer.tobytes()},
+            data={"chat_id": chat_id, "caption": message},
+            timeout=10,
+        )
+    except Exception:
+        logger.exception("Ошибка при отправке Telegram-уведомления.")
+
+
+# ---------------------------------------------------------------------------
+# Генератор кадров
+# ---------------------------------------------------------------------------
 
 def generate_frames():
-    global config, current_people_count
+    global current_people_count
+
     last_log_people_time = time.time()
-    last_seen_faces = {}
+    last_seen_faces: dict[str, float] = {}
+    last_cleanup_time = time.time()
+    CLEANUP_INTERVAL = 300.0
 
     while True:
-        if camera is None: 
+        if camera is None:
             time.sleep(0.1)
             continue
+
         frame = camera.get_frame()
-        if frame is None: break
+        if frame is None:
+            break
 
-        people_count = 0
-        if config.get('enable_people_count'):
-            frame, people_count = person_tracker.process(frame)
-            current_people_count = people_count
-            if (time.time() - last_log_people_time) > float(config['log_interval']):
-                db.log_event("PEOPLE_STATS", str(people_count))
-                last_log_people_time = time.time()
+        cfg = config
 
-        if config.get('enable_face_rec'):
-            frame, found_names = face_recognizer.process_and_return_names(frame)
+        if cfg.get("enable_people_count"):
+            # detect() — только детекция, без рисования боксов YOLO
+            track_ids, boxes_xywh, raw_plot = person_tracker.detect(frame)
+ 
+            # Если есть активные зоны/линии — применяем их
+            if zone_detector and (zone_detector.zones or zone_detector.lines):
+                # Рисуем боксы YOLO на кадре
+                frame = raw_plot
+                # Поверх — зоны и линии
+                frame, zone_stats = zone_detector.process(frame, track_ids, boxes_xywh)
+                people_count = zone_stats["total"] if zone_stats["zones"] else len(track_ids)
+ 
+                # Логируем статистику по каждой зоне отдельно
+                if (time.time() - last_log_people_time) > float(cfg["log_interval"]):
+                    for zs in zone_stats["zones"]:
+                        db.log_event("ZONE_STATS", f"{zs['name']}:{zs['count']}")
+                    for ls in zone_stats["lines"]:
+                        db.log_event("LINE_CROSS", f"{ls['name']}:in={ls['in']},out={ls['out']}")
+                    last_log_people_time = time.time()
+            else:
+                # Зон нет — старое поведение: просто рисуем боксы и считаем всех
+                frame = person_tracker.draw_tails(raw_plot, track_ids, boxes_xywh)
+                people_count = len(track_ids)
+ 
+                if (time.time() - last_log_people_time) > float(cfg["log_interval"]):
+                    db.log_event("PEOPLE_STATS", str(people_count))
+                    last_log_people_time = time.time()
+ 
+            with _state_lock:
+                current_people_count = people_count
+
+        if cfg.get("enable_face_rec"):
+            frame, found_names = face_recognizer.recognize(frame)
             curr_time = time.time()
+
             for name in found_names:
-                if name == "Unknown": continue
-                last_time = last_seen_faces.get(name, 0)
-                if (curr_time - last_time) > float(config['face_cooldown']):
+                if (curr_time - last_seen_faces.get(name, 0.0)) > float(cfg["face_cooldown"]):
                     db.log_event("FACE_MATCH", name)
+                    logger.info("Опознан: %s", name)
                     last_seen_faces[name] = curr_time
-                    if config.get('enable_telegram') and config.get('telegram_token'):
-                        msg = f"🚨 ВНИМАНИЕ! Обнаружен: {name}"
-                        threading.Thread(
-                            target=send_telegram_alert, 
-                            args=(config['telegram_token'], config['telegram_chat_id'], msg, frame)
-                        ).start()
 
-        ret, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                    # ── Триггер записи видеоклипа ──
+                    if video_buffer is not None:
+                        video_buffer.trigger(label=f"face_{name}")
 
-# --- ROUTING ---
+                    # ── Telegram с фото (как было) ──
+                    if cfg.get("enable_telegram") and cfg.get("telegram_token"):
+                        _tg_executor.submit(
+                            _send_telegram_alert,
+                            cfg["telegram_token"],
+                            cfg["telegram_chat_id"],
+                            f"🚨 ВНИМАНИЕ! Обнаружен: {name}",
+                            frame.copy(),
+                        )
 
-@app.route('/')
-def index():
-    events = []
-    last_face = "Нет данных"
+        # ── Подаём каждый кадр в буфер (ОБЯЗАТЕЛЬНО после всей обработки) ──
+        if video_buffer is not None:
+            video_buffer.push(frame)
+
+        if (time.time() - last_cleanup_time) > CLEANUP_INTERVAL:
+            cutoff = time.time() - float(cfg["face_cooldown"]) * 10
+            last_seen_faces = {k: v for k, v in last_seen_faces.items() if v > cutoff}
+            last_cleanup_time = time.time()
+
+        ret, buffer = cv2.imencode(".jpg", frame)
+        if not ret:
+            continue
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Роуты — аутентификация
+# ---------------------------------------------------------------------------
+
+@app.route("/zones")
+@login_required
+def zones_editor():
+    return render_template("zones_editor.html")
+ 
+ 
+@app.route("/api/zones", methods=["GET"])
+@login_required
+def api_zones_get():
+    """Возвращает текущие зоны и линии."""
+    zones_list, lines_list = load_zones()
+    return jsonify({
+        "zones": [z.__dict__ for z in zones_list],
+        "lines": [l.__dict__ for l in lines_list],
+    })
+ 
+ 
+@app.route("/api/zones", methods=["POST"])
+@login_required
+def api_zones_post():
+    """Сохраняет зоны и линии, перезагружает ZoneDetector."""
     try:
-        cur = db.connection.cursor()
-        cur.execute("SELECT timestamp, event_type, details FROM events ORDER BY id DESC LIMIT 15")
-        events = cur.fetchall()
-        cur.execute("SELECT details FROM events WHERE event_type='FACE_MATCH' ORDER BY id DESC LIMIT 1")
-        last_face_row = cur.fetchone()
-        if last_face_row: last_face = last_face_row[0]
-    except: pass
-    return render_template_string(HTML_DASHBOARD, events=events, people_count=current_people_count, last_face=last_face)
+        data = request.get_json()
+        zones_list = [Zone(**z) for z in data.get("zones", [])]
+        lines_list = [TripLine(**l) for l in data.get("lines", [])]
+        save_zones(zones_list, lines_list)
+ 
+        if zone_detector:
+            zone_detector.reload()
+ 
+        logger.info("Зоны обновлены: %d зон, %d линий", len(zones_list), len(lines_list))
+        return jsonify({"status": "ok"})
+    except Exception:
+        logger.exception("Ошибка сохранения зон.")
+        return jsonify({"error": "save_failed"}), 500
+ 
+ 
+@app.route("/api/zones/reset_counters", methods=["POST"])
+@login_required
+def api_zones_reset():
+    """Сбрасывает счётчики пересечений линий."""
+    if zone_detector:
+        zone_detector.reset_counters()
+    return jsonify({"status": "ok"})
+ 
+ 
+@app.route("/snapshot")
+@login_required
+def snapshot():
+    """Отдаёт один JPEG-кадр для редактора зон."""
+    if camera is None:
+        return "", 503
+    frame = camera.get_frame()
+    if frame is None:
+        return "", 503
+    ret, buf = cv2.imencode(".jpg", frame)
+    if not ret:
+        return "", 500
+    from flask import Response
+    return Response(buf.tobytes(), mimetype="image/jpeg")
 
-@app.route('/settings', methods=['GET', 'POST'])
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("authenticated"):
+        return redirect(url_for("index"))
+
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        if verify_password(username, password):
+            session.permanent = True
+            session["authenticated"] = True
+            session["username"] = username
+            logger.info("Успешный вход: %s", username)
+            next_page = request.args.get("next") or url_for("index")
+            return redirect(next_page)
+        else:
+            logger.warning("Неудачная попытка входа: '%s'", username)
+            error = "Неверный логин или пароль"
+
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    username = session.get("username", "unknown")
+    session.clear()
+    logger.info("Выход: %s", username)
+    return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# Роуты — основные (все защищены @login_required)
+# ---------------------------------------------------------------------------
+
+@app.route("/clips")
+@login_required
+def list_clips():
+    """Возвращает список сохранённых клипов."""
+    clips_dir = "clips"
+    if not os.path.exists(clips_dir):
+        return jsonify([])
+    files = sorted(
+        [f for f in os.listdir(clips_dir) if f.endswith(".mp4")],
+        reverse=True,
+    )
+    return jsonify(files)
+
+
+@app.route("/clips/<path:filename>")
+@login_required
+def download_clip(filename):
+    """Отдаёт файл клипа для скачивания/воспроизведения."""
+    return send_from_directory(
+        os.path.abspath("clips"),
+        filename,
+        as_attachment=False,  # False = можно воспроизводить прямо в браузере
+    )
+
+
+@app.route("/")
+@login_required
+def index():
+    return render_template("index.html")
+
+
+@app.route("/video_feed")
+@login_required
+def video_feed():
+    return Response(
+        generate_frames(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.route("/api/stats")
+@login_required
+def api_stats():
+    with _state_lock:
+        people = current_people_count
+
+    try:
+        events_raw = db.get_recent_events(limit=15)
+        last_face = db.get_last_face_match() or "Нет данных"
+    except Exception:
+        logger.exception("Ошибка при получении статистики из БД.")
+        return jsonify({"error": "db_error"}), 500
+
+    events = [
+        {
+            "id":      row["id"],
+            "time":    row["timestamp"].split(" ")[1] if " " in row["timestamp"] else row["timestamp"],
+            "type":    row["event_type"],
+            "details": row["details"],
+        }
+        for row in events_raw
+    ]
+
+    return jsonify({
+        "people_count": people,
+        "last_face":    last_face,
+        "events":       events,
+    })
+
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
 def settings():
-    global camera, config
+    global camera
 
-    if request.method == 'POST':
-        new_source = request.form.get('camera_source')
+    if request.method == "POST":
+        old_source = config["camera_source"]
+        new_source = request.form.get("camera_source", old_source)
+
         new_config = config.copy()
-        new_config['camera_source'] = new_source
-        new_config['enable_face_rec'] = 'enable_face_rec' in request.form
-        new_config['enable_people_count'] = 'enable_people_count' in request.form
-        new_config['enable_telegram'] = 'enable_telegram' in request.form
-        new_config['telegram_token'] = request.form.get('telegram_token', '').strip()
-        new_config['telegram_chat_id'] = request.form.get('telegram_chat_id', '').strip()
-        
+        new_config["camera_source"]       = new_source
+        new_config["enable_face_rec"]     = "enable_face_rec" in request.form
+        new_config["enable_people_count"] = "enable_people_count" in request.form
+        new_config["enable_telegram"]     = "enable_telegram" in request.form
+        new_config["telegram_token"]      = request.form.get("telegram_token", "").strip()
+        new_config["telegram_chat_id"]    = request.form.get("telegram_chat_id", "").strip()
+
         save_config(new_config)
 
-        if new_source != config['camera_source']:
-            if camera: camera.release()
-            src = new_source
-            if src.isdigit(): src = int(src)
+        if new_source != old_source:
+            logger.info("Смена камеры: %s → %s", old_source, new_source)
+            if camera:
+                camera.release()
+            src = int(new_source) if str(new_source).isdigit() else new_source
             camera = VideoLoader(src)
 
-        return redirect(url_for('index'))
+        return redirect(url_for("index"))
 
-    return render_template_string(HTML_SETTINGS, config=config)
+    return render_template("settings.html", config=config)
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# --- TEMPLATES ---
+@app.route("/api/refresh_faces", methods=["POST"])
+@login_required
+def refresh_faces():
+    try:
+        face_recognizer.refresh_database()
+        return jsonify({"status": "ok", "count": len(face_recognizer._names)})
+    except Exception:
+        logger.exception("Ошибка при обновлении базы лиц.")
+        return jsonify({"error": "refresh_failed"}), 500
+    
+@app.route("/analytics")
+@login_required
+def analytics():
+    return render_template("analytics.html")
 
-HTML_DASHBOARD = """
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>AI Security Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <meta http-equiv="refresh" content="3">
-    <style>
-        :root { --bg-dark: #0f1015; --panel-bg: #191b23; --accent-green: #00d25b; --accent-red: #fc424a; --text-main: #ffffff; --text-muted: #8e90a6; }
-        body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Inter', sans-serif; }
-        .navbar { background-color: var(--panel-bg); border-bottom: 1px solid #2c2e3e; padding: 15px 0; }
-        .brand-logo { font-weight: 600; font-size: 1.2rem; color: var(--text-main); text-decoration: none; letter-spacing: 1px; }
-        .stat-card { background-color: var(--panel-bg); border-radius: 12px; padding: 20px; display: flex; align-items: center; border: 1px solid #2c2e3e; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s; }
-        .stat-card:hover { transform: translateY(-2px); }
-        .stat-icon { width: 50px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-right: 15px; }
-        .icon-blue { background: rgba(0, 144, 231, 0.2); color: #0090e7; }
-        .icon-green { background: rgba(0, 210, 91, 0.2); color: #00d25b; }
-        .icon-red { background: rgba(252, 66, 74, 0.2); color: #fc424a; }
-        .video-container { background: #000; border-radius: 12px; overflow: hidden; position: relative; border: 1px solid #333; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
-        .rec-indicator { position: absolute; top: 20px; right: 20px; display: flex; align-items: center; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
-        .rec-dot { width: 10px; height: 10px; background-color: red; border-radius: 50%; margin-right: 8px; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
-        .log-panel { background-color: var(--panel-bg); border-radius: 12px; height: 100%; border: 1px solid #2c2e3e; overflow: hidden; }
-        .log-header { padding: 15px 20px; border-bottom: 1px solid #2c2e3e; font-weight: 600; }
-        .log-list { max-height: 500px; overflow-y: auto; padding: 0; margin: 0; list-style: none; }
-        .log-item { padding: 12px 20px; border-bottom: 1px solid #232530; display: flex; align-items: center; font-size: 0.9rem; }
-        .log-item:last-child { border-bottom: none; }
-        .log-time { font-size: 0.75rem; color: var(--text-muted); margin-right: 15px; min-width: 50px; }
-        .log-badge { font-size: 0.7rem; padding: 4px 8px; border-radius: 4px; margin-right: 10px; font-weight: 600; text-transform: uppercase; }
-        .badge-face { background: rgba(252, 66, 74, 0.2); color: #fc424a; }
-        .badge-people { background: rgba(0, 210, 91, 0.2); color: #00d25b; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #191b23; }
-        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <nav class="navbar mb-4">
-        <div class="container">
-            <a href="#" class="brand-logo"><i class="fas fa-shield-alt text-primary me-2"></i>AI SECURITY GUARD</a>
-            <div><a href="/settings" class="btn btn-outline-light btn-sm"><i class="fas fa-cog me-2"></i>Настройки</a></div>
-        </div>
-    </nav>
-    <div class="container">
-        <div class="row mb-4">
-            <div class="col-md-4"><div class="stat-card"><div class="stat-icon icon-green"><i class="fas fa-walking"></i></div><div><div class="text-muted small">Людей в кадре</div><h3 class="mb-0">{{ people_count }}</h3></div></div></div>
-            <div class="col-md-4"><div class="stat-card"><div class="stat-icon icon-red"><i class="fas fa-user-tag"></i></div><div><div class="text-muted small">Последний опознанный</div><h5 class="mb-0">{{ last_face }}</h5></div></div></div>
-            <div class="col-md-4"><div class="stat-card"><div class="stat-icon icon-blue"><i class="fas fa-microchip"></i></div><div><div class="text-muted small">Статус системы</div><h5 class="mb-0 text-success">ONLINE (GPU)</h5></div></div></div>
-        </div>
-        <div class="row">
-            <div class="col-lg-8 mb-4">
-                <div class="video-container">
-                    <img src="{{ url_for('video_feed') }}" width="100%">
-                    <div class="rec-indicator"><div class="rec-dot"></div> LIVE REC</div>
-                </div>
-            </div>
-            <div class="col-lg-4 mb-4">
-                <div class="log-panel">
-                    <div class="log-header"><i class="fas fa-history me-2 text-muted"></i> Лента Событий</div>
-                    <ul class="log-list">
-                        {% for row in events %}
-                        <li class="log-item">
-                            <span class="log-time">{{ row[0].split(' ')[1] }}</span>
-                            {% if row[1] == 'FACE_MATCH' %}<span class="log-badge badge-face">ALERT</span><span>Опознан: <strong>{{ row[2] }}</strong></span>
-                            {% else %}<span class="log-badge badge-people">INFO</span><span>Людей: {{ row[2] }}</span>{% endif %}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-"""
 
-HTML_SETTINGS = """
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Настройки системы</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg-dark: #0f1015; --panel-bg: #191b23; --accent-green: #00d25b; }
-        body { background-color: var(--bg-dark); color: #fff; font-family: 'Inter', sans-serif; }
-        
-        /* Контейнер настроек */
-        .settings-container { max-width: 800px; margin: 50px auto; }
-        
-        /* Заголовок секций - Сделали ярко-зеленым */
-        .section-label {
-            color: var(--accent-green); 
-            text-transform: uppercase; letter-spacing: 1.2px; font-size: 0.8rem; 
-            margin-bottom: 15px; font-weight: 700; display: block;
-        }
+@app.route("/api/analytics")
+@login_required
+def api_analytics():
+    try:
+        period = int(request.args.get("days", 7))
+        period = max(1, min(period, 90))  # Ограничиваем: от 1 до 90 дней
 
-        /* Инпуты */
-        .custom-input { 
-            background-color: #0f1015; border: 1px solid #2c2e3e; color: #fff; 
-            padding: 12px 15px; border-radius: 8px; transition: 0.3s;
-        }
-        .custom-input:focus { 
-            background-color: #0f1015; border-color: var(--accent-green); color: #fff; 
-            box-shadow: 0 0 0 4px rgba(0, 210, 91, 0.1); outline: none;
-        }
-        .custom-input::placeholder { color: #555; }
+        return jsonify({
+            "summary":      db.get_summary_stats(),
+            "hourly":       db.get_hourly_stats(days=period),
+            "daily":        db.get_daily_stats(days=period),
+            "top_faces":    db.get_top_faces(limit=10),
+        })
+    except Exception:
+        logger.exception("Ошибка при получении аналитики.")
+        return jsonify({"error": "db_error"}), 500
 
-        /* Подписи к полям - Сделали светло-серыми */
-        .form-label { color: #e0e0e0; font-weight: 500; font-size: 0.9rem; }
-        
-        /* Описание под иконками - Сделали читаемым */
-        .text-description { color: #adb5bd; font-size: 0.85rem; }
 
-        /* Карточка модуля */
-        .module-card {
-            background-color: var(--panel-bg); border: 1px solid #2c2e3e; border-radius: 12px;
-            padding: 20px; margin-bottom: 20px; transition: 0.3s;
-        }
-        .module-card:hover { border-color: #555; }
-        
-        /* Свичи (Тумблеры) */
-        .form-switch .form-check-input {
-            width: 3.5em; height: 1.8em; margin-top: 0;
-            background-color: #2c2e3e; border-color: #444;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%238e90a6'/%3e%3c/svg%3e");
-        }
-        .form-switch .form-check-input:checked {
-            background-color: var(--accent-green); border-color: var(--accent-green);
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
-        }
 
-        /* Кнопки */
-        .btn-save { 
-            background-color: var(--accent-green); color: #000; font-weight: 600; 
-            padding: 12px 30px; border-radius: 8px; border: none; 
-        }
-        .btn-save:hover { background-color: #00b34d; color: #000; }
-        .btn-cancel { color: #adb5bd; text-decoration: none; margin-right: 20px; }
-        .btn-cancel:hover { color: #fff; }
-
-        .icon-box {
-            width: 40px; height: 40px; border-radius: 8px; background: rgba(255,255,255,0.05);
-            display: flex; align-items: center; justify-content: center; margin-right: 15px;
-            color: var(--accent-green); font-size: 1.2rem;
-        }
-    </style>
-</head>
-<body>
-    <div class="container settings-container">
-        
-        <div class="d-flex justify-content-between align-items-center mb-5">
-            <h2 class="mb-0 text-white"><i class="fas fa-sliders-h me-3 text-primary"></i>Настройки Системы</h2>
-            <a href="/" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-2"></i>Назад</a>
-        </div>
-
-        <form method="POST">
-            
-            <span class="section-label">Источник Видео</span>
-            <div class="module-card">
-                <div class="mb-3">
-                    <label class="form-label">RTSP ссылка или ID камеры</label>
-                    <div class="input-group">
-                        <span class="input-group-text" style="background: #2c2e3e; border-color: #2c2e3e; color: #aaa;"><i class="fas fa-video"></i></span>
-                        <input type="text" class="form-control custom-input" name="camera_source" value="{{ config.camera_source }}" placeholder="Например: 0 или rtsp://admin:pass@192.168...">
-                    </div>
-                </div>
-            </div>
-
-            <span class="section-label mt-4">AI Модули</span>
-            
-            <div class="module-card d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center">
-                    <div class="icon-box"><i class="fas fa-id-card-alt"></i></div>
-                    <div>
-                        <h5 class="mb-1 text-white">Распознавание Лиц</h5>
-                        <div class="text-description">Идентификация сотрудников и нарушителей</div>
-                    </div>
-                </div>
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" name="enable_face_rec" {% if config.enable_face_rec %}checked{% endif %}>
-                </div>
-            </div>
-
-            <div class="module-card d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center">
-                    <div class="icon-box"><i class="fas fa-users"></i></div>
-                    <div>
-                        <h5 class="mb-1 text-white">Подсчет Людей</h5>
-                        <div class="text-description">Статистика посетителей и трекинг</div>
-                    </div>
-                </div>
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" name="enable_people_count" {% if config.enable_people_count %}checked{% endif %}>
-                </div>
-            </div>
-
-            <span class="section-label mt-4">Уведомления</span>
-            <div class="module-card">
-                <div class="d-flex align-items-center justify-content-between mb-4">
-                    <div class="d-flex align-items-center">
-                        <div class="icon-box" style="color: #0088cc;"><i class="fab fa-telegram-plane"></i></div>
-                        <div>
-                            <h5 class="mb-1 text-white">Telegram Бот</h5>
-                            <div class="text-description">Отправка фото при обнаружении лиц</div>
-                        </div>
-                    </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" name="enable_telegram" {% if config.enable_telegram %}checked{% endif %}>
-                    </div>
-                </div>
-                
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Bot Token</label>
-                        <input type="text" class="form-control custom-input" name="telegram_token" value="{{ config.telegram_token }}" placeholder="12345:ABCde...">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Chat ID</label>
-                        <input type="text" class="form-control custom-input" name="telegram_chat_id" value="{{ config.telegram_chat_id }}" placeholder="123456789">
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-5 mb-5 d-flex justify-content-end align-items-center">
-                <a href="/" class="btn-cancel">Отмена</a>
-                <button type="submit" class="btn-save">Сохранить настройки</button>
-            </div>
-
-        </form>
-    </div>
-</body>
-</html>
-"""
+# ---------------------------------------------------------------------------
+# Точка входа
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     init_system()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    zone_detector = ZoneDetector()
+    app.run(host="0.0.0.0", port=5000, debug=False)
