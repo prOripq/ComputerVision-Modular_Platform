@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Database — AI Security Guard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg:        #080b0f;
+            --surface:   #0d1117;
+            --border:    #1a2332;
+            --amber:     #e8a030;
+            --amber-dim: rgba(232, 160, 48, 0.12);
+            --green:     #22c55e;
+            --green-dim: rgba(34, 197, 94, 0.12);
+            --red:       #ef4444;
+            --red-dim:   rgba(239, 68, 68, 0.12);
+            --blue:      #3b82f6;
+            --text:      #c9d1d9;
+            --muted:     #4a5568;
+            --mono:      'Share Tech Mono', monospace;
+            --sans:      'Rajdhani', sans-serif;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+            pointer-events: none; z-index: 9999;
+        }
+        header {
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 0 32px; height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
+        .brand-icon { width: 32px; height: 32px; border: 1px solid var(--amber); display: flex; align-items: center; justify-content: center; color: var(--amber); font-size: 14px; position: relative; }
+        .brand-icon::before { content: ''; position: absolute; inset: 2px; border: 1px solid rgba(232,160,48,0.3); }
+        .brand-name { font-family: var(--mono); font-size: 13px; letter-spacing: 3px; color: var(--amber); }
+        .brand-sub  { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+        nav { display: flex; align-items: center; gap: 4px; }
+        .nav-link { padding: 7px 14px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); text-decoration: none; text-transform: uppercase; border: 1px solid transparent; transition: color 0.2s, border-color 0.2s; }
+        .nav-link:hover { color: var(--text); border-color: var(--border); }
+        .nav-link.active { color: var(--amber); border-color: rgba(232,160,48,0.3); background: var(--amber-dim); }
+
+        main { padding: 28px 32px; max-width: 1200px; margin: 0 auto; }
+
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+        .page-title-wrap { display: flex; align-items: center; gap: 14px; }
+        .page-icon { width: 40px; height: 40px; border: 1px solid var(--amber); display: flex; align-items: center; justify-content: center; color: var(--amber); font-size: 16px; }
+        .page-title { font-family: var(--mono); font-size: 14px; letter-spacing: 3px; color: var(--amber); text-transform: uppercase; }
+        .page-sub   { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; margin-top: 3px; }
+
+        /* Upload card */
+        .upload-card {
+            background: var(--surface); border: 1px solid var(--border);
+            padding: 24px; margin-bottom: 24px;
+        }
+        .upload-title { font-family: var(--mono); font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+        .upload-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+        .field-label { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 8px; }
+        .text-input {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-family: var(--mono); font-size: 13px;
+            padding: 11px 14px; outline: none; transition: border-color 0.2s;
+        }
+        .text-input:focus { border-color: var(--amber); }
+        .file-input-wrap { position: relative; }
+        .file-input-label {
+            display: flex; align-items: center; gap: 10px;
+            padding: 11px 14px; background: var(--bg); border: 1px solid var(--border);
+            color: var(--muted); font-family: var(--mono); font-size: 12px; cursor: pointer;
+            transition: border-color 0.2s, color 0.2s; white-space: nowrap; overflow: hidden;
+        }
+        .file-input-label:hover { border-color: var(--amber); color: var(--amber); }
+        #photoInput { position: absolute; opacity: 0; width: 0; height: 0; }
+        .btn-upload {
+            padding: 11px 24px; background: var(--amber); border: none;
+            color: #000; font-family: var(--sans); font-size: 14px;
+            font-weight: 700; letter-spacing: 1px; cursor: pointer;
+            transition: background 0.2s; white-space: nowrap;
+        }
+        .btn-upload:hover { background: #d4902a; }
+        .btn-upload:disabled { background: var(--muted); cursor: not-allowed; }
+
+        /* Face grid */
+        .section-title { font-family: var(--mono); font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+        .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+        .counter { color: var(--amber); margin-left: 4px; }
+
+        .face-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+        .face-card {
+            background: var(--surface); border: 1px solid var(--border);
+            overflow: hidden; position: relative;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .face-card:hover { border-color: var(--amber); transform: translateY(-2px); }
+        .face-photo {
+            width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+            background: #0d1117;
+        }
+        .face-photo-placeholder {
+            width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+            background: #080b0f; color: var(--muted); font-size: 40px;
+        }
+        .face-info { padding: 12px; }
+        .face-name { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .face-actions { display: flex; gap: 8px; }
+        .btn-delete {
+            flex: 1; padding: 6px; border: 1px solid rgba(239,68,68,0.3);
+            background: var(--red-dim); color: var(--red);
+            font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .btn-delete:hover { background: rgba(239,68,68,0.25); border-color: var(--red); }
+
+        .empty-state { text-align: center; padding: 60px 20px; font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+        .empty-icon { font-size: 36px; margin-bottom: 16px; opacity: 0.3; }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--surface); border: 1px solid var(--green);
+            color: var(--green); font-family: var(--mono); font-size: 11px;
+            letter-spacing: 1px; padding: 12px 20px; opacity: 0;
+            transform: translateY(8px); transition: all 0.3s; z-index: 1000;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { border-color: var(--red); color: var(--red); }
+
+        /* Upload progress */
+        .progress-wrap { margin-top: 12px; display: none; }
+        .progress-bar { height: 3px; background: var(--border); position: relative; overflow: hidden; }
+        .progress-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--amber); width: 0; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="/" class="brand">
+        <div class="brand-icon"><i class="fas fa-shield-halved"></i></div>
+        <div>
+            <div class="brand-name">AI Security Guard</div>
+            <div class="brand-sub">Computer Vision Platform</div>
+        </div>
+    </a>
+    <nav>
+        <a href="/"             class="nav-link">// Monitor</a>
+        <a href="/analytics"    class="nav-link">// Analytics</a>
+        <a href="/faces"        class="nav-link active">// Faces</a>
+        <a href="/zones"        class="nav-link">// Zones</a>
+        <a href="/clips_viewer" class="nav-link">// Clips</a>
+        <a href="/settings"     class="nav-link">// Settings</a>
+        <a href="/logout"       class="nav-link">// Logout</a>
+    </nav>
+</header>
+
+<main>
+    <div class="page-header">
+        <div class="page-title-wrap">
+            <div class="page-icon"><i class="fas fa-id-card"></i></div>
+            <div>
+                <div class="page-title">Face Database</div>
+                <div class="page-sub">Manage known identities for recognition</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload section -->
+    <div class="upload-card">
+        <div class="upload-title">// Add New Person</div>
+        <div class="upload-grid">
+            <div>
+                <label class="field-label">Full Name</label>
+                <input class="text-input" type="text" id="personName" placeholder="e.g. John Smith">
+            </div>
+            <div>
+                <label class="field-label">Photo (JPG / PNG)</label>
+                <div class="file-input-wrap">
+                    <label class="file-input-label" for="photoInput" id="fileLabel">
+                        <i class="fas fa-upload"></i>
+                        <span id="fileLabelText">Choose photo...</span>
+                    </label>
+                    <input type="file" id="photoInput" accept=".jpg,.jpeg,.png">
+                </div>
+            </div>
+            <button class="btn-upload" id="uploadBtn" onclick="uploadFace()">
+                <i class="fas fa-plus"></i> Add Person
+            </button>
+        </div>
+        <div class="progress-wrap" id="progressWrap">
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+    </div>
+
+    <!-- Faces list -->
+    <div class="section-title">// Known Faces <span class="counter" id="faceCounter">0</span></div>
+    <div class="face-grid" id="faceGrid">
+        <div class="empty-state">
+            <div class="empty-icon"><i class="fas fa-user-slash"></i></div>
+            Loading...
+        </div>
+    </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    // File input display
+    document.getElementById('photoInput').addEventListener('change', function() {
+        const name = this.files[0] ? this.files[0].name : 'Choose photo...';
+        document.getElementById('fileLabelText').textContent = name;
+    });
+
+    function uploadFace() {
+        const name = document.getElementById('personName').value.trim();
+        const file = document.getElementById('photoInput').files[0];
+
+        if (!name) { showToast('Enter a name', true); return; }
+        if (!file)  { showToast('Choose a photo', true); return; }
+
+        const btn = document.getElementById('uploadBtn');
+        btn.disabled = true;
+        document.getElementById('progressWrap').style.display = 'block';
+
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('photo', file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener('progress', e => {
+            if (e.lengthComputable) {
+                document.getElementById('progressFill').style.width =
+                    (e.loaded / e.total * 100) + '%';
+            }
+        });
+        xhr.onload = () => {
+            btn.disabled = false;
+            document.getElementById('progressWrap').style.display = 'none';
+            document.getElementById('progressFill').style.width = '0';
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (data.status === 'ok') {
+                    showToast(`✓ ${data.name} added to database`);
+                    document.getElementById('personName').value = '';
+                    document.getElementById('photoInput').value = '';
+                    document.getElementById('fileLabelText').textContent = 'Choose photo...';
+                    loadFaces();
+                } else {
+                    showToast('Error: ' + (data.error || 'unknown'), true);
+                }
+            } catch(e) {
+                showToast('Upload failed', true);
+            }
+        };
+        xhr.onerror = () => {
+            btn.disabled = false;
+            showToast('Connection error', true);
+        };
+        xhr.open('POST', '/api/faces/upload');
+        xhr.send(formData);
+    }
+
+    function loadFaces() {
+        fetch('/api/faces')
+            .then(r => r.json())
+            .then(faces => {
+                const grid = document.getElementById('faceGrid');
+                document.getElementById('faceCounter').textContent = faces.length;
+
+                if (faces.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-state" style="grid-column:1/-1">
+                            <div class="empty-icon"><i class="fas fa-user-slash"></i></div>
+                            No faces in database.<br>Upload a photo above to get started.
+                        </div>`;
+                    return;
+                }
+
+                grid.innerHTML = '';
+                faces.forEach(face => {
+                    const card = document.createElement('div');
+                    card.className = 'face-card';
+                    card.innerHTML = `
+                        <img class="face-photo"
+                             src="/api/faces/photo/${encodeURIComponent(face.filename)}"
+                             alt="${escHtml(face.name)}"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                        <div class="face-photo-placeholder" style="display:none">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="face-info">
+                            <div class="face-name" title="${escHtml(face.name)}">${escHtml(face.name)}</div>
+                            <div class="face-actions">
+                                <button class="btn-delete" onclick="deleteFace('${escHtml(face.filename)}', '${escHtml(face.name)}')">
+                                    <i class="fas fa-trash-alt"></i> Delete
+                                </button>
+                            </div>
+                        </div>`;
+                    grid.appendChild(card);
+                });
+            })
+            .catch(() => showToast('Failed to load faces', true));
+    }
+
+    function deleteFace(filename, name) {
+        if (!confirm(`Remove "${name}" from the database?`)) return;
+        fetch('/api/faces/' + encodeURIComponent(filename), { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    showToast(`${name} removed`);
+                    loadFaces();
+                } else {
+                    showToast('Delete failed', true);
+                }
+            })
+            .catch(() => showToast('Connection error', true));
+    }
+
+    function showToast(msg, error = false) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast show' + (error ? ' error' : '');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    loadFaces();
+</script>
+</body>
+</html>

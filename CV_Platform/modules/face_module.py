@@ -33,7 +33,7 @@ class FaceRecognizer:
                 ctx_id = -1
 
         device_label = f"GPU (ctx_id={ctx_id})" if ctx_id >= 0 else "CPU"
-        print(f"Загрузка InsightFace на {device_label}...")
+        logger.info("Загрузка InsightFace на %s...", device_label)
 
         self.app = FaceAnalysis(name="buffalo_l")
         self.app.prepare(ctx_id=ctx_id, det_size=det_size)
@@ -63,7 +63,7 @@ class FaceRecognizer:
             self._names = []
             return
 
-        print(f"Загрузка базы лиц из '{self.db_path}'...")
+        logger.info("Загрузка базы лиц из '%s'...", self.db_path)
 
         for filename in os.listdir(self.db_path):
             if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
@@ -98,7 +98,7 @@ class FaceRecognizer:
             np.stack(embeddings) if embeddings else np.empty((0,))
         )
 
-        print(f"База готова. Людей в базе: {len(self._names)}")
+        logger.info("База лиц готова. Записей: %d", len(self._names))
 
     def refresh_database(self) -> None:
         """Перезагружает базу (например, после добавления новых фото через веб-интерфейс)."""

@@ -416,11 +416,13 @@
         </a>
     </div>
     <nav>
-        <a href="/"          class="nav-link active">// Monitor</a>
-        <a href="/analytics" class="nav-link ">// Analytics</a>
-        <a href="/zones"       class="nav-link">// Зоны</a>
-        <a href="/settings"  class="nav-link">// Settings</a>
-        <a href="/logout"    class="nav-link">// Logout</a>
+        <a href="/"             class="nav-link active">// Monitor</a>
+        <a href="/analytics"    class="nav-link">// Analytics</a>
+        <a href="/faces"        class="nav-link">// Faces</a>
+        <a href="/zones"        class="nav-link">// Zones</a>
+        <a href="/clips_viewer" class="nav-link">// Clips</a>
+        <a href="/settings"     class="nav-link">// Settings</a>
+        <a href="/logout"       class="nav-link">// Logout</a>
     </nav>
     
 </header>
@@ -445,9 +447,17 @@
     </div>
 
     <div class="content-grid">
-        <div class="video-wrap">
-            <img src="{{ url_for('video_feed') }}" alt="Live feed">
+        <div class="video-wrap" id="videoWrap">
+            <img src="{{ url_for('video_feed') }}" alt="Live feed" id="videoFeed"
+                 onerror="onFeedError()" onload="onFeedLoad()">
             <div class="live-badge"><div class="live-dot"></div>LIVE REC</div>
+            <div id="feedOffline" style="display:none;position:absolute;inset:0;background:#000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+                <i class="fas fa-video-slash" style="font-size:48px;color:var(--muted);opacity:0.4;"></i>
+                <span style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:2px;">CAMERA UNAVAILABLE</span>
+                <button onclick="reloadFeed()" style="padding:8px 18px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:1px;">
+                    <i class="fas fa-rotate-right"></i> RETRY
+                </button>
+            </div>
             <div class="corner tl"></div>
             <div class="corner tr"></div>
             <div class="corner bl"></div>
@@ -477,6 +487,22 @@
     }
     setInterval(updateClock, 1000);
     updateClock();
+
+    // Video feed error handling
+    function onFeedError() {
+        document.getElementById('videoFeed').style.display = 'none';
+        const offline = document.getElementById('feedOffline');
+        offline.style.display = 'flex';
+        setOnline(false);
+    }
+    function onFeedLoad() {
+        document.getElementById('feedOffline').style.display = 'none';
+        document.getElementById('videoFeed').style.display = 'block';
+    }
+    function reloadFeed() {
+        const img = document.getElementById('videoFeed');
+        img.src = img.src.split('?')[0] + '?t=' + Date.now();
+    }
 
     // Update stats
     let failCount = 0;

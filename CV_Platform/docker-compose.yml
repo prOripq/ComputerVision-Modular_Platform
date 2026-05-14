@@ -7,9 +7,8 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
-    
-    # --- МАГИЯ GPU ---
-    # Этот блок отдает видеокарту внутрь контейнера
+
+    # --- GPU ---
     deploy:
       resources:
         reservations:
@@ -18,14 +17,22 @@ services:
               count: 1
               capabilities: [gpu]
 
-    # --- ХРАНЕНИЕ ДАННЫХ ---
-    # Мы мапим папки с твоего ПК внутрь Докера.
-    # Если ты добавишь фото в папку known_faces на Windows, Докер это увидит.
+    # --- Доступ к камерам (USB/V4L2) ---
+    # Раскомментируйте нужные устройства:
+    devices:
+      - /dev/video0:/dev/video0   # Камера 0
+      # - /dev/video1:/dev/video1 # Камера 1 (если есть)
+
+    # --- Хранение данных ---
     volumes:
       - ./known_faces:/app/known_faces
       - ./config.json:/app/config.json
       - ./platform_data.db:/app/platform_data.db
-      
-    # Чтобы видеть логи (print) сразу в консоли
+      - ./clips:/app/clips
+      - ./zones.json:/app/zones.json
+      - ./.flask_secret:/app/.flask_secret
+
     environment:
       - PYTHONUNBUFFERED=1
+      # Можно задать SECRET_KEY явно:
+      # - SECRET_KEY=your_very_long_secret_key_here

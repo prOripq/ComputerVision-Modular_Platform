@@ -357,11 +357,13 @@
     <a href="/" class="btn-back"><i class="fas fa-arrow-left"></i> Back</a>
 
     <nav>
-        <a href="/"          class="nav-link">// Monitor</a>
-        <a href="/analytics" class="nav-link">// Analytics</a>
-        <a href="/zones"       class="nav-link">// Зоны</a>
-        <a href="/settings"  class="nav-link active">// Settings</a>
-        <a href="/logout"    class="nav-link">// Logout</a>
+        <a href="/"             class="nav-link">// Monitor</a>
+        <a href="/analytics"    class="nav-link">// Analytics</a>
+        <a href="/faces"        class="nav-link">// Faces</a>
+        <a href="/zones"        class="nav-link">// Zones</a>
+        <a href="/clips_viewer" class="nav-link">// Clips</a>
+        <a href="/settings"     class="nav-link active">// Settings</a>
+        <a href="/logout"       class="nav-link">// Logout</a>
     </nav>
 </header>
 
@@ -483,6 +485,46 @@
             </div>
         </div>
 
+        <div class="section-label">// Timing &amp; Sensitivity</div>
+
+        <div class="card">
+            <div class="card-body">
+                <div class="input-grid">
+                    <div>
+                        <label class="field-label">Face Recognition Cooldown (sec)</label>
+                        <div class="input-wrap">
+                            <span class="input-prefix"><i class="fas fa-clock"></i></span>
+                            <input class="text-input" type="number" name="face_cooldown"
+                                   value="{{ config.face_cooldown }}" min="1" max="300" step="1">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="field-label">People Count Log Interval (sec)</label>
+                        <div class="input-wrap">
+                            <span class="input-prefix"><i class="fas fa-chart-bar"></i></span>
+                            <input class="text-input" type="number" name="log_interval"
+                                   value="{{ config.log_interval }}" min="1" max="60" step="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;">
+                    <label class="field-label">Face Match Threshold: <span id="threshVal" style="color:var(--amber)">{{ config.face_threshold }}</span></label>
+                    <div style="display:flex; align-items:center; gap:16px; margin-top:8px;">
+                        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">0.3 (loose)</span>
+                        <input type="range" name="face_threshold" id="threshSlider"
+                               min="0.3" max="0.9" step="0.01"
+                               value="{{ config.face_threshold }}"
+                               style="flex:1; accent-color:var(--amber);">
+                        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">0.9 (strict)</span>
+                    </div>
+                    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:6px;letter-spacing:1px;">
+                        Recommended: 0.50–0.65. Lower = more matches (more false positives).
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="actions">
             <a href="/" class="btn-cancel">Cancel</a>
             <button type="submit" class="btn-save">
@@ -491,6 +533,102 @@
         </div>
 
     </form>
+
+    <!-- Change Password -->
+    <div class="section-label" style="margin-top:40px;">// Security</div>
+    <div class="card">
+        <div class="card-body">
+            <div class="module-row" style="align-items:flex-start; flex-wrap:wrap; gap:16px;">
+                <div class="module-info">
+                    <div class="module-icon" style="color:var(--red);border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);">
+                        <i class="fas fa-lock"></i>
+                    </div>
+                    <div>
+                        <div class="module-name">Change Password</div>
+                        <div class="module-desc">Update login credentials for: <span style="color:var(--amber);">{{ session.get('username', '') if session else '' }}</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-divider"></div>
+            <div class="input-grid">
+                <div>
+                    <label class="field-label">Current Password</label>
+                    <div class="input-wrap">
+                        <input class="text-input" type="password" id="oldPw" placeholder="Current password">
+                    </div>
+                </div>
+                <div>
+                    <label class="field-label">New Password (min 6 chars)</label>
+                    <div class="input-wrap">
+                        <input class="text-input" type="password" id="newPw" placeholder="New password">
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:16px; display:flex; align-items:center; gap:16px;">
+                <button class="btn-save" onclick="changePassword()" style="padding:10px 24px;">
+                    <i class="fas fa-key"></i> Update Password
+                </button>
+                <span id="pwMsg" style="font-family:var(--mono);font-size:11px;letter-spacing:1px;"></span>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // Threshold slider live preview
+    const slider = document.getElementById('threshSlider');
+    const threshVal = document.getElementById('threshVal');
+    if (slider) {
+        slider.addEventListener('input', () => {
+            threshVal.textContent = parseFloat(slider.value).toFixed(2);
+        });
+    }
+
+    // Change password
+    function changePassword() {
+        const old_pw = document.getElementById('oldPw').value;
+        const new_pw = document.getElementById('newPw').value;
+        const msg = document.getElementById('pwMsg');
+
+        if (!old_pw || !new_pw) {
+            msg.style.color = 'var(--red)';
+            msg.textContent = '✗ Fill both fields';
+            return;
+        }
+        if (new_pw.length < 6) {
+            msg.style.color = 'var(--red)';
+            msg.textContent = '✗ Password must be at least 6 characters';
+            return;
+        }
+
+        fetch('/api/change_password', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({old_password: old_pw, new_password: new_pw})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                msg.style.color = 'var(--green)';
+                msg.textContent = '✓ Password updated successfully';
+                document.getElementById('oldPw').value = '';
+                document.getElementById('newPw').value = '';
+            } else if (data.error === 'wrong_password') {
+                msg.style.color = 'var(--red)';
+                msg.textContent = '✗ Current password is incorrect';
+            } else if (data.error === 'too_short') {
+                msg.style.color = 'var(--red)';
+                msg.textContent = '✗ New password too short (min 6 chars)';
+            } else {
+                msg.style.color = 'var(--red)';
+                msg.textContent = '✗ Error: ' + (data.error || 'unknown');
+            }
+        })
+        .catch(() => {
+            msg.style.color = 'var(--red)';
+            msg.textContent = '✗ Connection error';
+        });
+    }
+</script>
 </main>
 
 </body>

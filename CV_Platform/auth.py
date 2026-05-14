@@ -61,6 +61,26 @@ def verify_password(username: str, password: str) -> bool:
     return hmac.compare_digest(expected, entry["password_hash"])
 
 
+def change_password(username: str, old_password: str, new_password: str) -> bool:
+    """
+    Меняет пароль пользователя. Возвращает True при успехе.
+    Требует подтверждения старого пароля.
+    """
+    if not verify_password(username, old_password):
+        return False
+    users = _load_users()
+    if username not in users:
+        return False
+    salt = secrets.token_hex(32)
+    users[username] = {
+        "salt":          salt,
+        "password_hash": _hash_password(new_password, salt),
+    }
+    _save_users(users)
+    logger.info("Пароль изменён для пользователя '%s'.", username)
+    return True
+
+
 def create_default_admin(username: str = "admin", password: str = "admin") -> None:
     """
     Создаёт администратора по умолчанию при первом запуске,

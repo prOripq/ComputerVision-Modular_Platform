@@ -1,7 +1,11 @@
+import logging
+
 from ultralytics import YOLO
 import cv2
 import numpy as np
 from collections import defaultdict, deque
+
+logger = logging.getLogger(__name__)
 
 
 class PersonDetector:
@@ -21,7 +25,7 @@ class PersonDetector:
             tail_thickness: Толщина линии траектории.
             stale_id_ttl:   Через сколько кадров удалять историю пропавшего ID.
         """
-        print(f"Загрузка нейросети YOLO из '{model_path}'...")
+        logger.info("Загрузка нейросети YOLO из '%s'...", model_path)
         self.model = YOLO(model_path)
 
         self.tail_length = tail_length
@@ -37,7 +41,7 @@ class PersonDetector:
         self._last_seen: dict[int, int] = {}
         self._frame_idx: int = 0
 
-        print("Нейросеть готова к работе.")
+        logger.info("PersonDetector готов к работе.")
 
     # ------------------------------------------------------------------
     # Публичный API

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Clips — AI Security Guard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg:        #080b0f;
+            --surface:   #0d1117;
+            --border:    #1a2332;
+            --amber:     #e8a030;
+            --amber-dim: rgba(232, 160, 48, 0.12);
+            --green:     #22c55e;
+            --red:       #ef4444;
+            --blue:      #3b82f6;
+            --text:      #c9d1d9;
+            --muted:     #4a5568;
+            --mono:      'Share Tech Mono', monospace;
+            --sans:      'Rajdhani', sans-serif;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+            pointer-events: none; z-index: 9999;
+        }
+        header {
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 0 32px; height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
+        .brand-icon { width: 32px; height: 32px; border: 1px solid var(--amber); display: flex; align-items: center; justify-content: center; color: var(--amber); font-size: 14px; position: relative; }
+        .brand-icon::before { content: ''; position: absolute; inset: 2px; border: 1px solid rgba(232,160,48,0.3); }
+        .brand-name { font-family: var(--mono); font-size: 13px; letter-spacing: 3px; color: var(--amber); }
+        .brand-sub  { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+        nav { display: flex; align-items: center; gap: 4px; }
+        .nav-link { padding: 7px 14px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); text-decoration: none; text-transform: uppercase; border: 1px solid transparent; transition: color 0.2s, border-color 0.2s; }
+        .nav-link:hover { color: var(--text); border-color: var(--border); }
+        .nav-link.active { color: var(--amber); border-color: rgba(232,160,48,0.3); background: var(--amber-dim); }
+
+        main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+        .page-title-wrap { display: flex; align-items: center; gap: 14px; }
+        .page-icon { width: 40px; height: 40px; border: 1px solid var(--amber); display: flex; align-items: center; justify-content: center; color: var(--amber); font-size: 16px; }
+        .page-title { font-family: var(--mono); font-size: 14px; letter-spacing: 3px; color: var(--amber); text-transform: uppercase; }
+        .page-sub   { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; margin-top: 3px; }
+
+        .content-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+
+        /* Clips list */
+        .clips-panel { background: var(--surface); border: 1px solid var(--border); }
+        .panel-header {
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-title { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+        .clip-count  { font-family: var(--mono); font-size: 10px; color: var(--amber); }
+
+        .clips-list { list-style: none; overflow-y: auto; max-height: calc(100vh - 200px); }
+        .clips-list::-webkit-scrollbar { width: 4px; }
+        .clips-list::-webkit-scrollbar-track { background: transparent; }
+        .clips-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .clip-item {
+            padding: 14px 18px; border-bottom: 1px solid rgba(26,35,50,0.6);
+            cursor: pointer; transition: background 0.15s;
+        }
+        .clip-item:last-child { border-bottom: none; }
+        .clip-item:hover  { background: rgba(255,255,255,0.02); }
+        .clip-item.active { background: var(--amber-dim); border-left: 3px solid var(--amber); padding-left: 15px; }
+
+        .clip-name {
+            font-family: var(--mono); font-size: 11px; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            margin-bottom: 6px;
+        }
+        .clip-meta { display: flex; justify-content: space-between; align-items: center; }
+        .clip-date { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+        .clip-size { font-family: var(--mono); font-size: 10px; color: var(--amber); }
+
+        .empty-clips { padding: 40px 18px; text-align: center; font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+
+        /* Player */
+        .player-panel { background: var(--surface); border: 1px solid var(--border); }
+        .player-header { padding: 14px 20px; border-bottom: 1px solid var(--border); }
+        .player-filename { font-family: var(--mono); font-size: 11px; color: var(--amber); letter-spacing: 1px; }
+        .player-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+        .video-container { background: #000; position: relative; }
+        video {
+            width: 100%; display: block; max-height: 60vh;
+            background: #000;
+        }
+        .player-placeholder {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 80px 20px; color: var(--muted);
+            font-family: var(--mono); font-size: 11px; letter-spacing: 1px; gap: 16px;
+        }
+        .player-placeholder i { font-size: 48px; opacity: 0.3; }
+
+        .player-actions { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 12px; }
+        .btn-action {
+            padding: 9px 18px; border: 1px solid var(--border);
+            background: transparent; color: var(--muted);
+            font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+            text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none;
+        }
+        .btn-action:hover { border-color: var(--amber); color: var(--amber); }
+        .btn-action.danger:hover { border-color: var(--red); color: var(--red); }
+
+        /* Refresh btn */
+        .btn-refresh {
+            padding: 7px 14px; border: 1px solid var(--border);
+            background: transparent; color: var(--muted);
+            font-family: var(--mono); font-size: 11px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-refresh:hover { border-color: var(--amber); color: var(--amber); }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="/" class="brand">
+        <div class="brand-icon"><i class="fas fa-shield-halved"></i></div>
+        <div>
+            <div class="brand-name">AI Security Guard</div>
+            <div class="brand-sub">Computer Vision Platform</div>
+        </div>
+    </a>
+    <nav>
+        <a href="/"             class="nav-link">// Monitor</a>
+        <a href="/analytics"    class="nav-link">// Analytics</a>
+        <a href="/faces"        class="nav-link">// Faces</a>
+        <a href="/zones"        class="nav-link">// Zones</a>
+        <a href="/clips_viewer" class="nav-link active">// Clips</a>
+        <a href="/settings"     class="nav-link">// Settings</a>
+        <a href="/logout"       class="nav-link">// Logout</a>
+    </nav>
+</header>
+
+<main>
+    <div class="page-header">
+        <div class="page-title-wrap">
+            <div class="page-icon"><i class="fas fa-film"></i></div>
+            <div>
+                <div class="page-title">Recorded Clips</div>
+                <div class="page-sub">Event-triggered video recordings</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-grid">
+        <!-- Clips list -->
+        <div class="clips-panel">
+            <div class="panel-header">
+                <span class="panel-title">// Clips</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="clip-count" id="clipCount">0</span>
+                    <button class="btn-refresh" onclick="loadClips()" title="Refresh">
+                        <i class="fas fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+            <ul class="clips-list" id="clipsList">
+                <li class="empty-clips">Loading...</li>
+            </ul>
+        </div>
+
+        <!-- Player -->
+        <div class="player-panel">
+            <div class="player-header" id="playerHeader">
+                <div class="player-filename">// No clip selected</div>
+                <div class="player-sub">Select a clip from the list</div>
+            </div>
+            <div class="video-container">
+                <div class="player-placeholder" id="playerPlaceholder">
+                    <i class="fas fa-film"></i>
+                    Select a clip to play
+                </div>
+                <video id="videoPlayer" controls style="display:none">
+                    Your browser does not support video playback.
+                </video>
+            </div>
+            <div class="player-actions" id="playerActions" style="display:none">
+                <a id="downloadBtn" href="#" class="btn-action" download>
+                    <i class="fas fa-download"></i> Download
+                </a>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    let currentClip = null;
+
+    function loadClips() {
+        fetch('/clips')
+            .then(r => r.json())
+            .then(clips => {
+                const list = document.getElementById('clipsList');
+                document.getElementById('clipCount').textContent = clips.length;
+
+                if (clips.length === 0) {
+                    list.innerHTML = '<li class="empty-clips">No clips recorded yet.<br>Clips are saved automatically when a face is recognized.</li>';
+                    return;
+                }
+
+                list.innerHTML = '';
+                clips.forEach(clip => {
+                    const li = document.createElement('li');
+                    li.className = 'clip-item' + (clip.filename === currentClip ? ' active' : '');
+                    li.innerHTML = `
+                        <div class="clip-name">${escHtml(clip.filename)}</div>
+                        <div class="clip-meta">
+                            <span class="clip-date">${escHtml(clip.created)}</span>
+                            <span class="clip-size">${clip.size_mb} MB</span>
+                        </div>`;
+                    li.onclick = () => playClip(clip, li);
+                    list.appendChild(li);
+                });
+            })
+            .catch(() => {
+                document.getElementById('clipsList').innerHTML =
+                    '<li class="empty-clips">Failed to load clips.</li>';
+            });
+    }
+
+    function playClip(clip, li) {
+        // Highlight selected
+        document.querySelectorAll('.clip-item').forEach(el => el.classList.remove('active'));
+        li.classList.add('active');
+        currentClip = clip.filename;
+
+        const url = '/clips/' + encodeURIComponent(clip.filename);
+        const video = document.getElementById('videoPlayer');
+        const placeholder = document.getElementById('playerPlaceholder');
+        const actions = document.getElementById('playerActions');
+        const header = document.getElementById('playerHeader');
+
+        header.innerHTML = `
+            <div class="player-filename">${escHtml(clip.filename)}</div>
+            <div class="player-sub">${escHtml(clip.created)} &nbsp;·&nbsp; ${clip.size_mb} MB</div>`;
+
+        placeholder.style.display = 'none';
+        video.style.display = 'block';
+        video.src = url;
+        video.play().catch(() => {});
+
+        document.getElementById('downloadBtn').href = url;
+        document.getElementById('downloadBtn').download = clip.filename;
+        actions.style.display = 'flex';
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    loadClips();
+    // Auto-refresh every 30s
+    setInterval(loadClips, 30000);
+</script>
+</body>
+</html>

@@ -1,7 +1,8 @@
-flask
-requests
-numpy
-opencv-python-headless
-ultralytics
-insightface
-onnxruntime-gpu
+flask==3.0.3
+requests==2.32.3
+numpy==1.26.4
+opencv-python-headless==4.9.0.80
+ultralytics==8.2.18
+insightface==0.7.3
+onnxruntime-gpu==1.18.0
+Pillow==10.3.0
