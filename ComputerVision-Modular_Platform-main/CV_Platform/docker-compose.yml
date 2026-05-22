@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  cv_platform:
+    build: .
+    container_name: cv_security_system
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    
+    # --- МАГИЯ GPU ---
+    # Этот блок отдает видеокарту внутрь контейнера
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # --- ХРАНЕНИЕ ДАННЫХ ---
+    # Мы мапим папки с твоего ПК внутрь Докера.
+    # Если ты добавишь фото в папку known_faces на Windows, Докер это увидит.
+    volumes:
+      - ./known_faces:/app/known_faces
+      - ./config.json:/app/config.json
+      - ./platform_data.db:/app/platform_data.db
+      
+    # Чтобы видеть логи (print) сразу в консоли
+    environment:
+      - PYTHONUNBUFFERED=1

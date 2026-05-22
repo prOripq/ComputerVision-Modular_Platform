@@ -1,0 +1,10 @@
+{
+    "admin": {
+        "salt": "1767120a9d6fcf5f10f525fb2378aa5d511289b092bd81b39862f31cd76c12c2",
+        "password_hash": "e2194d5a09484703d19d9e04359e0bc38913c8e238a41ed5cdc6c9822864d0d4"
+    },
+    "Zhangir": {
+        "salt": "198221e9ceb9f061f1a39e4cf995d0710ca249889bc082e6463204401bd73756",
+        "password_hash": "cf332496721e0c5de68f8cf13ebe2a013ac73af28757545533514728e7dc710d"
+    }
+}

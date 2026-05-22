@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — AI Security Guard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg:        #080b0f;
+            --surface:   #0d1117;
+            --border:    #1a2332;
+            --amber:     #e8a030;
+            --amber-dim: rgba(232, 160, 48, 0.10);
+            --green:     #22c55e;
+            --red:       #ef4444;
+            --text:      #c9d1d9;
+            --muted:     #4a5568;
+            --mono:      'Share Tech Mono', monospace;
+            --sans:      'Rajdhani', sans-serif;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Scanline */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* Grid background */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(232,160,48,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(232,160,48,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+        }
+
+        .login-wrap {
+            width: 100%;
+            max-width: 400px;
+            padding: 24px;
+            position: relative;
+            z-index: 1;
+            animation: fadeUp 0.4s ease;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Logo */
+        .logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 36px;
+        }
+        .logo-icon {
+            width: 56px; height: 56px;
+            border: 1px solid var(--amber);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--amber);
+            font-size: 22px;
+            position: relative;
+        }
+        .logo-icon::before {
+            content: '';
+            position: absolute;
+            inset: 3px;
+            border: 1px solid rgba(232,160,48,0.25);
+        }
+        .logo-name {
+            font-family: var(--mono);
+            font-size: 14px;
+            letter-spacing: 4px;
+            color: var(--amber);
+            text-transform: uppercase;
+        }
+        .logo-sub {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 3px;
+            color: var(--muted);
+        }
+
+        /* Card */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 32px;
+        }
+
+        .card-title {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 3px;
+            color: var(--muted);
+            text-transform: uppercase;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* Error */
+        .error-msg {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.25);
+            padding: 11px 14px;
+            margin-bottom: 20px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--red);
+            letter-spacing: 1px;
+        }
+
+        /* Fields */
+        .field { margin-bottom: 18px; }
+        .field-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 2px;
+            color: var(--muted);
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 8px;
+        }
+        .input-wrap {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-wrap:focus-within {
+            border-color: var(--amber);
+            box-shadow: 0 0 0 3px rgba(232,160,48,0.08);
+        }
+        .input-prefix {
+            padding: 0 14px;
+            color: var(--muted);
+            font-size: 13px;
+            border-right: 1px solid var(--border);
+            height: 46px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .text-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 13px;
+            padding: 0 14px;
+            height: 46px;
+            width: 100%;
+        }
+        .text-input::placeholder { color: var(--muted); }
+
+        /* Submit */
+        .btn-login {
+            width: 100%;
+            margin-top: 8px;
+            padding: 13px;
+            background: var(--amber);
+            border: none;
+            color: #000;
+            font-family: var(--sans);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-login:hover { background: #d4902a; }
+        .btn-login:active { transform: scale(0.99); }
+
+        .footer-note {
+            margin-top: 20px;
+            text-align: center;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-wrap">
+    <div class="logo">
+        <div class="logo-icon"><i class="fas fa-shield-halved"></i></div>
+        <div class="logo-name">AI Security Guard</div>
+        <div class="logo-sub">Computer Vision Platform</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">// Login</div>
+
+        {% if error %}
+        <div class="error-msg">
+            <i class="fas fa-triangle-exclamation"></i>
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <div class="field">
+                <label class="field-label" for="username">Username</label>
+                <div class="input-wrap">
+                    <span class="input-prefix"><i class="fas fa-user"></i></span>
+                    <input
+                        class="text-input"
+                        type="text"
+                        id="username"
+                        name="username"
+                        placeholder="admin"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="password">Password</label>
+                <div class="input-wrap">
+                    <span class="input-prefix"><i class="fas fa-lock"></i></span>
+                    <input
+                        class="text-input"
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="••••••••"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+            </div>
+
+            <button type="submit" class="btn-login">
+                <i class="fas fa-right-to-bracket"></i> Sign In
+            </button>
+        </form>
+    </div>
+
+    <div class="footer-note">Access restricted to authorized users only</div>
+</div>
+
+</body>
+</html>

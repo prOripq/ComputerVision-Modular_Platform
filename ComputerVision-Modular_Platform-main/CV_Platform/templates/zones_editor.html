@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zone Editor — AI Security Guard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg:        #080b0f;
+            --surface:   #0d1117;
+            --border:    #1a2332;
+            --amber:     #e8a030;
+            --amber-dim: rgba(232,160,48,0.10);
+            --green:     #22c55e;
+            --green-dim: rgba(34,197,94,0.10);
+            --red:       #ef4444;
+            --red-dim:   rgba(239,68,68,0.10);
+            --blue:      #3b82f6;
+            --text:      #c9d1d9;
+            --muted:     #4a5568;
+            --mono:      'Share Tech Mono', monospace;
+            --sans:      'Rajdhani', sans-serif;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+            pointer-events: none; z-index: 9999;
+        }
+
+        /* ── HEADER ── */
+        header {
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 0 32px; height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
+        .brand-icon { width: 32px; height: 32px; border: 1px solid var(--amber); display: flex; align-items: center; justify-content: center; color: var(--amber); font-size: 14px; position: relative; }
+        .brand-icon::before { content: ''; position: absolute; inset: 2px; border: 1px solid rgba(232,160,48,0.3); }
+        .brand-name { font-family: var(--mono); font-size: 13px; letter-spacing: 3px; color: var(--amber); }
+        .brand-sub  { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+        nav { display: flex; align-items: center; gap: 4px; }
+        .nav-link { padding: 7px 14px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); text-decoration: none; text-transform: uppercase; border: 1px solid transparent; transition: color 0.2s, border-color 0.2s; }
+        .nav-link:hover { color: var(--text); border-color: var(--border); }
+        .nav-link.active { color: var(--amber); border-color: rgba(232,160,48,0.3); background: var(--amber-dim); }
+
+        /* ── LAYOUT ── */
+        main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+        .editor-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 16px;
+            align-items: start;
+        }
+
+        /* ── CANVAS AREA ── */
+        .canvas-wrap {
+            background: #000;
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+        .canvas-wrap canvas {
+            display: block;
+            width: 100%;
+            cursor: crosshair;
+        }
+        .canvas-hint {
+            position: absolute;
+            bottom: 12px; left: 50%; transform: translateX(-50%);
+            font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+            color: rgba(255,255,255,0.4);
+            background: rgba(0,0,0,0.5);
+            padding: 5px 12px;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        /* Corner brackets */
+        .corner { position: absolute; width: 14px; height: 14px; }
+        .corner.tl { top: 6px; left: 6px; border-top: 1px solid var(--amber); border-left: 1px solid var(--amber); }
+        .corner.tr { top: 6px; right: 6px; border-top: 1px solid var(--amber); border-right: 1px solid var(--amber); }
+        .corner.bl { bottom: 6px; left: 6px; border-bottom: 1px solid var(--amber); border-left: 1px solid var(--amber); }
+        .corner.br { bottom: 6px; right: 6px; border-bottom: 1px solid var(--amber); border-right: 1px solid var(--amber); }
+
+        /* ── SIDEBAR ── */
+        .sidebar { display: flex; flex-direction: column; gap: 12px; }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+        }
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--mono); font-size: 10px;
+            letter-spacing: 2px; color: var(--muted); text-transform: uppercase;
+        }
+        .panel-body { padding: 16px; }
+
+        /* Mode buttons */
+        .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+        .mode-btn {
+            padding: 10px 8px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+            text-transform: uppercase; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            transition: all 0.2s;
+        }
+        .mode-btn i { font-size: 18px; }
+        .mode-btn:hover { border-color: var(--amber); color: var(--amber); }
+        .mode-btn.active { background: var(--amber-dim); border-color: rgba(232,160,48,0.4); color: var(--amber); }
+        .mode-btn.active-line { background: var(--red-dim); border-color: rgba(239,68,68,0.4); color: var(--red); }
+
+        /* Name input */
+        .field-label { font-family: var(--mono); font-size: 9px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 7px; }
+        .text-input {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-family: var(--mono); font-size: 12px;
+            padding: 9px 12px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .text-input:focus { border-color: var(--amber); }
+
+        /* Color picker */
+        .color-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .color-swatch {
+            width: 24px; height: 24px;
+            border: 2px solid transparent;
+            cursor: pointer; transition: transform 0.15s;
+        }
+        .color-swatch:hover { transform: scale(1.15); }
+        .color-swatch.selected { border-color: #fff; }
+
+        /* Action buttons */
+        .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+        .btn {
+            flex: 1; padding: 9px 8px;
+            border: 1px solid var(--border);
+            background: transparent; color: var(--muted);
+            font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+            text-transform: uppercase; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover { border-color: var(--amber); color: var(--amber); }
+        .btn.btn-save { background: var(--amber); border-color: var(--amber); color: #000; font-weight: 700; }
+        .btn.btn-save:hover { background: #d4902a; }
+        .btn.btn-danger:hover { border-color: var(--red); color: var(--red); }
+
+        /* Objects list */
+        .obj-list { list-style: none; }
+        .obj-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(26,35,50,0.5);
+            font-size: 13px; cursor: pointer;
+            transition: background 0.15s;
+        }
+        .obj-item:last-child { border-bottom: none; }
+        .obj-item:hover { background: rgba(255,255,255,0.03); }
+        .obj-item.selected { background: var(--amber-dim); }
+        .obj-dot { width: 10px; height: 10px; flex-shrink: 0; }
+        .obj-name { flex: 1; font-weight: 600; }
+        .obj-type { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 1px; }
+        .obj-delete { color: var(--muted); cursor: pointer; padding: 2px 6px; transition: color 0.15s; }
+        .obj-delete:hover { color: var(--red); }
+
+        .empty-list { padding: 20px 12px; font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; text-align: center; }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--surface); border: 1px solid var(--green);
+            color: var(--green); font-family: var(--mono); font-size: 11px;
+            letter-spacing: 1px; padding: 12px 20px;
+            opacity: 0; transform: translateY(8px);
+            transition: all 0.3s; z-index: 1000;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { border-color: var(--red); color: var(--red); }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="/" class="brand">
+        <div class="brand-icon"><i class="fas fa-shield-halved"></i></div>
+        <div>
+            <div class="brand-name">AI Security Guard</div>
+            <div class="brand-sub">Computer Vision Platform</div>
+        </div>
+    </a>
+    <nav>
+        <a href="/"            class="nav-link">// Monitor</a>
+        <a href="/analytics"   class="nav-link">// Analytics</a>
+        <a href="/zones"       class="nav-link active">// Zones</a>
+        <a href="/settings"    class="nav-link">// Settings</a>
+        <a href="/logout"      class="nav-link">// Logout</a>
+    </nav>
+</header>
+
+<main>
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+        <div style="width:40px;height:40px;border:1px solid var(--amber);display:flex;align-items:center;justify-content:center;color:var(--amber);font-size:16px;"><i class="fas fa-draw-polygon"></i></div>
+        <div>
+            <div style="font-family:var(--mono);font-size:14px;letter-spacing:3px;color:var(--amber);text-transform:uppercase;">Zone Editor</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;margin-top:3px;">Zone & Line Editor</div>
+        </div>
+    </div>
+
+    <div class="editor-grid">
+        <div class="canvas-wrap" id="canvasWrap">
+            <canvas id="editorCanvas"></canvas>
+            <div class="canvas-hint" id="canvasHint">Select a tool and click on the frame</div>
+            <div class="corner tl"></div><div class="corner tr"></div>
+            <div class="corner bl"></div><div class="corner br"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="panel">
+                <div class="panel-header">// Tool</div>
+                <div class="panel-body">
+                    <div class="mode-grid">
+                        <button class="mode-btn" id="modeZone" onclick="setMode('zone')">
+                            <i class="fas fa-draw-polygon"></i>Zone
+                        </button>
+                        <button class="mode-btn" id="modeLine" onclick="setMode('line')">
+                            <i class="fas fa-minus"></i>Line
+                        </button>
+                    </div>
+
+                    <label class="field-label">Name</label>
+                    <input class="text-input" type="text" id="objName" placeholder="e.g., Entrance" value="Zone 1">
+
+                    <div class="color-row" id="colorRow"></div>
+
+                    <div class="btn-row">
+                        <button class="btn" onclick="cancelDrawing()">Cancel</button>
+                        <button class="btn btn-save" onclick="finishDrawing()">
+                            <i class="fas fa-check"></i> Done
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">// Objects (<span id="objCount">0</span>)</div>
+                <ul class="obj-list" id="objList">
+                    <li class="empty-list">No objects yet</li>
+                </ul>
+            </div>
+
+            <button class="btn btn-save" style="width:100%; padding:13px; font-size:13px;" onclick="saveAll()">
+                <i class="fas fa-floppy-disk"></i> &nbsp;Save Zones
+            </button>
+            <button class="btn btn-danger btn-save" style="width:100%; padding:11px; font-size:11px; background:transparent; color:var(--muted); border-color:var(--border);" onclick="clearAll()">
+                Reset All
+            </button>
+        </div>
+    </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──
+let mode = null;          // 'zone' | 'line'
+let drawing = false;
+let currentPoints = [];
+let selectedColor = [0, 210, 255];  // BGR → translates to RGB for drawing
+
+let zones = [];   // {id, name, points, color}
+let lines = [];   // {id, name, p1, p2, color}
+
+let bgImage = null;
+let canvasW = 1280, canvasH = 720;
+
+const canvas = document.getElementById('editorCanvas');
+const ctx = canvas.getContext('2d');
+
+// ── Color presets (RGB for Canvas, BGR for saving) ──
+const COLORS = [
+    { rgb: [0, 210, 255],  bgr: [255, 210, 0]   },   // cyan
+    { rgb: [255, 80, 80],  bgr: [80, 80, 255]   },   // red
+    { rgb: [80, 220, 80],  bgr: [80, 220, 80]   },   // green
+    { rgb: [255, 165, 0],  bgr: [0, 165, 255]   },   // orange
+    { rgb: [180, 80, 255], bgr: [255, 80, 180]  },   // purple
+    { rgb: [255, 220, 0],  bgr: [0, 220, 255]   },   // yellow
+];
+let selectedColorRGB = COLORS[0].rgb;
+let selectedColorBGR = COLORS[0].bgr;
+
+// ── Init ──
+function init() {
+    buildColorSwatches();
+    loadFromServer();
+    loadBackground();
+    renderList();
+}
+
+function buildColorSwatches() {
+    const row = document.getElementById('colorRow');
+    COLORS.forEach((c, i) => {
+        const div = document.createElement('div');
+        div.className = 'color-swatch' + (i === 0 ? ' selected' : '');
+        div.style.background = `rgb(${c.rgb.join(',')})`;
+        div.onclick = () => {
+            document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+            div.classList.add('selected');
+            selectedColorRGB = c.rgb;
+            selectedColorBGR = c.bgr;
+            redraw();
+        };
+        row.appendChild(div);
+    });
+}
+
+function loadBackground() {
+    const img = new Image();
+    img.onload = () => {
+        bgImage = img;
+        canvasW = img.naturalWidth || 1280;
+        canvasH = img.naturalHeight || 720;
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        redraw();
+    };
+    img.onerror = () => {
+        // No stream — draw a placeholder
+        canvas.width = 1280; canvas.height = 720;
+        redraw();
+    };
+    // Fetch a frame from the stream
+    img.src = '/snapshot?' + Date.now();
+}
+
+function loadFromServer() {
+    fetch('/api/zones')
+        .then(r => r.json())
+        .then(data => {
+            zones = data.zones || [];
+            lines = data.lines || [];
+            renderList();
+            redraw();
+        });
+}
+
+// ── Mode ──
+function setMode(m) {
+    mode = m;
+    drawing = true;
+    currentPoints = [];
+    document.getElementById('modeZone').classList.toggle('active', m === 'zone');
+    document.getElementById('modeLine').classList.toggle('active-line', m === 'line');
+    document.getElementById('modeLine').classList.toggle('active', false);
+    document.getElementById('modeZone').classList.toggle('active-line', false);
+
+    const hints = {
+        zone: 'Click to add points. Double-click to finish the zone.',
+        line: 'Click the first point, then the second — the line is ready.'
+    };
+    document.getElementById('canvasHint').textContent = hints[m];
+}
+
+function cancelDrawing() {
+    drawing = false; mode = null; currentPoints = [];
+    document.getElementById('modeZone').classList.remove('active','active-line');
+    document.getElementById('modeLine').classList.remove('active','active-line');
+    document.getElementById('canvasHint').textContent = 'Select a tool';
+    redraw();
+}
+
+function finishDrawing() {
+    if (mode === 'zone' && currentPoints.length >= 3) {
+        commitZone();
+    } else if (mode === 'line' && currentPoints.length === 2) {
+        commitLine();
+    } else {
+        showToast('Not enough points', true);
+    }
+}
+
+// ── Canvas events ──
+canvas.addEventListener('click', e => {
+    if (!drawing || !mode) return;
+    const pt = getCanvasPoint(e);
+
+    if (mode === 'zone') {
+        currentPoints.push(pt);
+        redraw();
+    } else if (mode === 'line') {
+        currentPoints.push(pt);
+        if (currentPoints.length === 2) {
+            commitLine();
+        } else {
+            redraw();
+        }
+    }
+});
+
+canvas.addEventListener('dblclick', e => {
+    if (mode === 'zone' && currentPoints.length >= 3) {
+        e.preventDefault();
+        commitZone();
+    }
+});
+
+canvas.addEventListener('mousemove', e => {
+    if (!drawing || !mode || currentPoints.length === 0) return;
+    redraw(getCanvasPoint(e));
+});
+
+function getCanvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return [
+        Math.round((e.clientX - rect.left) * scaleX),
+        Math.round((e.clientY - rect.top)  * scaleY),
+    ];
+}
+
+// ── Commit ──
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function commitZone() {
+    const name = document.getElementById('objName').value.trim() || `Zone ${zones.length + 1}`;
+    zones.push({ id: genId(), name, points: [...currentPoints], color: [...selectedColorBGR] });
+    currentPoints = [];
+    drawing = false; mode = null;
+    document.getElementById('modeZone').classList.remove('active');
+    document.getElementById('canvasHint').textContent = 'Zone added';
+    renderList(); redraw();
+}
+
+function commitLine() {
+    const name = document.getElementById('objName').value.trim() || `Line ${lines.length + 1}`;
+    lines.push({ id: genId(), name, p1: currentPoints[0], p2: currentPoints[1], color: [...selectedColorBGR] });
+    currentPoints = [];
+    drawing = false; mode = null;
+    document.getElementById('modeLine').classList.remove('active-line');
+    document.getElementById('canvasHint').textContent = 'Line added';
+    renderList(); redraw();
+}
+
+// ── Draw ──
+function bgrToRgb(bgr) { return [bgr[2], bgr[1], bgr[0]]; }
+function colorStr(bgr, alpha) {
+    const [r, g, b] = bgrToRgb(bgr);
+    return alpha != null ? `rgba(${r},${g},${b},${alpha})` : `rgb(${r},${g},${b})`;
+}
+
+function redraw(mousePos) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    if (bgImage) {
+        ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.fillStyle = '#0d1117';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#1a2332';
+        ctx.font = '14px Share Tech Mono';
+        ctx.fillText('// SNAPSHOT UNAVAILABLE — zones are drawn over the frame', 20, 30);
+    }
+
+    // Saved zones
+    zones.forEach(z => drawZone(z.points, z.color, z.name, false));
+
+    // Saved lines
+    lines.forEach(l => drawLine(l.p1, l.p2, l.color, l.name, false));
+
+    // In-progress
+    if (drawing && currentPoints.length > 0) {
+        const c = selectedColorRGB;
+        const pts = mousePos ? [...currentPoints, mousePos] : currentPoints;
+
+        if (mode === 'zone') {
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            pts.forEach(p => ctx.lineTo(p[0], p[1]));
+            if (!mousePos) ctx.closePath();
+            ctx.fillStyle = `rgba(${c.join(',')},0.15)`;
+            ctx.fill();
+            ctx.strokeStyle = `rgb(${c.join(',')})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // Dots
+            currentPoints.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p[0], p[1], 5, 0, Math.PI * 2);
+                ctx.fillStyle = `rgb(${c.join(',')})`;
+                ctx.fill();
+            });
+        } else if (mode === 'line' && pts.length >= 2) {
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            ctx.lineTo(pts[1][0], pts[1][1]);
+            ctx.strokeStyle = `rgb(${c.join(',')})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.arc(pts[0][0], pts[0][1], 5, 0, Math.PI * 2);
+            ctx.fillStyle = `rgb(${c.join(',')})`;
+            ctx.fill();
+        }
+    }
+}
+
+function drawZone(points, bgrColor, name, active) {
+    if (points.length < 2) return;
+    const c = bgrToRgb(bgrColor);
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    points.forEach(p => ctx.lineTo(p[0], p[1]));
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${c.join(',')},${active ? 0.3 : 0.18})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgb(${c.join(',')})`;
+    ctx.lineWidth = active ? 3 : 2;
+    ctx.stroke();
+    // Label
+    const cx = Math.round(points.reduce((s, p) => s + p[0], 0) / points.length);
+    const cy = Math.round(points.reduce((s, p) => s + p[1], 0) / points.length);
+    drawLabel(name, cx, cy, c);
+}
+
+function drawLine(p1, p2, bgrColor, name, active) {
+    const c = bgrToRgb(bgrColor);
+    ctx.beginPath();
+    ctx.moveTo(p1[0], p1[1]);
+    ctx.lineTo(p2[0], p2[1]);
+    ctx.strokeStyle = `rgb(${c.join(',')})`;
+    ctx.lineWidth = active ? 3 : 2;
+    ctx.stroke();
+    // Arrow
+    const mx = (p1[0]+p2[0])>>1, my = (p1[1]+p2[1])>>1;
+    const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
+    const len = Math.sqrt(dx*dx+dy*dy) || 1;
+    const nx = -dy/len, ny = dx/len;
+    drawArrow(ctx, mx, my, mx+nx*20, my+ny*20, `rgb(${c.join(',')})`);
+    // Dots
+    [p1, p2].forEach(p => {
+        ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI*2);
+        ctx.fillStyle = `rgb(${c.join(',')})`; ctx.fill();
+    });
+    drawLabel(name, p1[0], p1[1] - 14, c);
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+    const angle = Math.atan2(y2-y1, x2-x1);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+    const s = 8;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - s*Math.cos(angle-0.4), y2 - s*Math.sin(angle-0.4));
+    ctx.lineTo(x2 - s*Math.cos(angle+0.4), y2 - s*Math.sin(angle+0.4));
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
+
+function drawLabel(text, x, y, rgb) {
+    ctx.font = '13px Rajdhani, sans-serif';
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(x - 2, y - 15, w + 8, 20);
+    ctx.fillStyle = `rgb(${rgb.join(',')})`;
+    ctx.fillText(text, x + 2, y);
+}
+
+// ── Object list ──
+function renderList() {
+    const list = document.getElementById('objList');
+    const all = [
+        ...zones.map(z => ({...z, type: 'zone'})),
+        ...lines.map(l => ({...l, type: 'line'})),
+    ];
+    document.getElementById('objCount').textContent = all.length;
+
+    if (all.length === 0) {
+        list.innerHTML = '<li class="empty-list">No objects yet</li>';
+        return;
+    }
+    list.innerHTML = '';
+    all.forEach(obj => {
+        const c = bgrToRgb(obj.color);
+        const li = document.createElement('li');
+        li.className = 'obj-item';
+        li.innerHTML = `
+            <div class="obj-dot" style="background:rgb(${c.join(',')})"></div>
+            <span class="obj-name">${escHtml(obj.name)}</span>
+            <span class="obj-type">${obj.type === 'zone' ? 'ZONE' : 'LINE'}</span>
+            <span class="obj-delete" onclick="deleteObj('${obj.id}','${obj.type}',event)">
+                <i class="fas fa-xmark"></i>
+            </span>`;
+        list.appendChild(li);
+    });
+}
+
+function deleteObj(id, type, e) {
+    e.stopPropagation();
+    if (type === 'zone') zones = zones.filter(z => z.id !== id);
+    else lines = lines.filter(l => l.id !== id);
+    renderList(); redraw();
+}
+
+function clearAll() {
+    if (!confirm('Reset all zones and lines?')) return;
+    zones = []; lines = [];
+    renderList(); redraw();
+}
+
+// ── Save ──
+function saveAll() {
+    fetch('/api/zones', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ zones, lines }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.status === 'ok') showToast('Zones saved!');
+        else showToast('Save error', true);
+    })
+    .catch(() => showToast('Connection error', true));
+}
+
+// ── Toast ──
+function showToast(msg, error=false) {
+    const t = document.getElementById('toast');
+    t.textContent = (error ? '✗ ' : '✓ ') + msg;
+    t.className = 'toast show' + (error ? ' error' : '');
+    setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

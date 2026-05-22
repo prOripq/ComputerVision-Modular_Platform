@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Security Guard</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+    --page-bg:       #e8f4f6;
+    --page-bg2:      #ddeef1;
+    --surface:       #f5fbfc;
+    --surface-2:     #edf7f9;
+    --card:          #ffffff;
+    --card-hover:    #f9fefe;
+
+    --border:        rgba(10,130,150,0.13);
+    --border-md:     rgba(10,130,150,0.22);
+    --border-strong: rgba(10,130,150,0.32);
+
+    --teal:          #0891b2;
+    --teal-mid:      #0e7490;
+    --teal-soft:     rgba(8,145,178,0.09);
+    --teal-mid-soft: rgba(8,145,178,0.16);
+
+    --amber:         #b45309;
+    --amber-soft:    rgba(180,83,9,0.09);
+
+    --green:         #0d7a5f;
+    --green-soft:    rgba(13,122,95,0.10);
+
+    --red:           #be123c;
+    --red-soft:      rgba(190,18,60,0.09);
+
+    --text:          #0c2d35;
+    --text-2:        #2d6374;
+    --muted:         #5a8d9a;
+    --muted-light:   #8ab5bf;
+
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', sans-serif;
+
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 16px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background-color: var(--page-bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+}
+
+/* ── HEADER ── */
+header {
+    background: rgba(245,251,252,0.92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border-md);
+    padding: 0 28px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    text-decoration: none;
+    color: var(--text);
+    margin-right: 32px;
+}
+.brand-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--teal-soft);
+    border: 1px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--teal);
+    font-size: 15px;
+}
+.brand-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--teal);
+    text-transform: uppercase;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.brand-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    margin-top: 2px;
+}
+
+nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+}
+.nav-link {
+    padding: 6px 13px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-decoration: none;
+    text-transform: uppercase;
+    border-radius: 7px;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+    border: 1px solid transparent;
+}
+.nav-link:hover {
+    background: var(--surface-2);
+    color: var(--text-2);
+}
+.nav-link.active {
+    background: var(--teal-soft);
+    color: var(--teal);
+    border-color: var(--border-md);
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--green-soft);
+    border: 1px solid rgba(13,122,95,0.22);
+    border-radius: 20px;
+    padding: 5px 13px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: 1.5px;
+    font-weight: 600;
+}
+.status-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: blink 2s ease-in-out infinite;
+}
+.status-pill.offline {
+    background: var(--red-soft);
+    border-color: rgba(190,18,60,0.22);
+    color: var(--red);
+}
+.status-pill.offline .dot {
+    background: var(--red);
+    animation: none;
+}
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .35; }
+}
+
+.btn-settings {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 15px;
+    border-radius: 8px;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    color: var(--text-2);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s;
+}
+.btn-settings:hover {
+    border-color: var(--teal);
+    color: var(--teal);
+    background: var(--teal-soft);
+}
+
+/* ── MAIN ── */
+main {
+    padding: 24px 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* ── STAT CARDS ── */
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 20px 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
+    cursor: default;
+}
+.stat-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(8,100,120,0.08);
+}
+.stat-card::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 3px 0 0 3px;
+}
+.stat-card.teal::after  { background: var(--teal); }
+.stat-card.amber::after { background: var(--amber); }
+.stat-card.green::after { background: var(--green); }
+
+.stat-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted-light);
+    text-transform: uppercase;
+    margin-bottom: 11px;
+    font-weight: 500;
+}
+.stat-value {
+    font-family: var(--mono);
+    font-size: 34px;
+    font-weight: 600;
+    line-height: 1;
+}
+.stat-card.teal  .stat-value { color: var(--teal); }
+.stat-card.amber .stat-value { color: var(--amber); }
+.stat-card.green .stat-value { color: var(--green); }
+
+.stat-icon {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 34px;
+    opacity: .06;
+    color: var(--text);
+}
+
+/* ── CONTENT GRID ── */
+.content-grid {
+    display: grid;
+    grid-template-columns: 1fr 315px;
+    gap: 14px;
+    align-items: start;
+}
+
+/* ── VIDEO ── */
+.video-wrap {
+    background: #08181e;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    position: relative;
+    overflow: hidden;
+}
+.video-wrap img {
+    width: 100%;
+    display: block;
+}
+
+.live-badge {
+    position: absolute;
+    top: 13px;
+    left: 13px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(8,24,30,0.78);
+    border: 1px solid rgba(190,18,60,0.35);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #f87171;
+    font-weight: 600;
+    backdrop-filter: blur(8px);
+}
+.live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #f87171;
+    animation: liveblink 1.2s ease-in-out infinite;
+}
+@keyframes liveblink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .15; }
+}
+
+.corner { position: absolute; width: 12px; height: 12px; }
+.corner.tl { top:10px; left:10px;   border-top:   1.5px solid rgba(8,145,178,.45); border-left:  1.5px solid rgba(8,145,178,.45); }
+.corner.tr { top:10px; right:10px;  border-top:   1.5px solid rgba(8,145,178,.45); border-right: 1.5px solid rgba(8,145,178,.45); }
+.corner.bl { bottom:10px; left:10px;  border-bottom:1.5px solid rgba(8,145,178,.45); border-left:  1.5px solid rgba(8,145,178,.45); }
+.corner.br { bottom:10px; right:10px; border-bottom:1.5px solid rgba(8,145,178,.45); border-right: 1.5px solid rgba(8,145,178,.45); }
+
+.cam-id {
+    position: absolute;
+    bottom: 12px;
+    left: 13px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,.3);
+    font-weight: 500;
+}
+.cam-time {
+    position: absolute;
+    bottom: 12px;
+    right: 13px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: rgba(255,255,255,.3);
+    font-weight: 500;
+}
+
+/* ── LOG PANEL ── */
+.log-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.log-header {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface-2);
+}
+.log-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+.log-count {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    background: var(--page-bg2);
+    border: 1px solid var(--border-md);
+    border-radius: 10px;
+    padding: 2px 9px;
+}
+
+.log-list {
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+    max-height: 468px;
+}
+.log-list::-webkit-scrollbar { width: 3px; }
+.log-list::-webkit-scrollbar-track { background: transparent; }
+.log-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+.log-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 44px 48px 1fr;
+    align-items: center;
+    gap: 10px;
+    animation: slIn 0.2s ease;
+    transition: background 0.13s;
+    cursor: default;
+}
+.log-item:hover { background: var(--surface-2); }
+.log-item:last-child { border-bottom: none; }
+@keyframes slIn {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.log-time {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted-light);
+    font-weight: 500;
+}
+.log-badge {
+    font-family: var(--mono);
+    font-size: 8px;
+    padding: 3px 7px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    text-align: center;
+    border-radius: 5px;
+    font-weight: 600;
+}
+.badge-alert { background: var(--red-soft);   color: var(--red);   border: 1px solid rgba(190,18,60,.18); }
+.badge-info  { background: var(--green-soft);  color: var(--green); border: 1px solid rgba(13,122,95,.18); }
+
+.log-text {
+    font-size: 12px;
+    color: var(--text-2);
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.log-text strong { color: var(--amber); font-weight: 600; }
+
+.log-empty {
+    padding: 40px 16px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted-light);
+    letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <a href="#" class="brand">
+        <div class="brand-icon"><i class="fas fa-shield-halved"></i></div>
+        <div>
+            <div class="brand-name">AI Security Guard</div>
+            <div class="brand-sub">Computer Vision Platform</div>
+        </div>
+    </a>
+    <nav>
+        <a href="/"          class="nav-link active">Monitor</a>
+        <a href="/analytics" class="nav-link">Analytics</a>
+        <a href="/zones"     class="nav-link">Zones</a>
+        <a href="/settings"  class="nav-link">Settings</a>
+        <a href="/logout"    class="nav-link">Logout</a>
+    </nav>
+    <div class="header-actions">
+        <div class="status-pill" id="connectionStatus">
+            <div class="dot"></div>
+            <span id="statusText">ONLINE</span>
+        </div>
+        <a href="/settings" class="btn-settings">
+            <i class="fas fa-sliders"></i> Settings
+        </a>
+    </div>
+</header>
+
+<main>
+    <div class="stats-row">
+        <div class="stat-card teal">
+            <div class="stat-label">People in Frame</div>
+            <div class="stat-value" id="peopleCount">—</div>
+            <i class="fas fa-person-walking stat-icon"></i>
+        </div>
+        <div class="stat-card amber">
+            <div class="stat-label">Last Recognized</div>
+            <div class="stat-value" id="lastFace" style="font-size:17px;padding-top:9px;">—</div>
+            <i class="fas fa-user-check stat-icon"></i>
+        </div>
+        <div class="stat-card green">
+            <div class="stat-label">System Status</div>
+            <div class="stat-value" id="systemStatus" style="font-size:17px;padding-top:9px;">ONLINE</div>
+            <i class="fas fa-microchip stat-icon"></i>
+        </div>
+    </div>
+
+    <div class="content-grid">
+        <div class="video-wrap">
+            <img src="{{ url_for('video_feed') }}" alt="Live feed">
+            <div class="live-badge"><div class="live-dot"></div>LIVE REC</div>
+            <div class="corner tl"></div>
+            <div class="corner tr"></div>
+            <div class="corner bl"></div>
+            <div class="corner br"></div>
+            <div class="cam-id">CAM-01 // MAIN ENTRANCE</div>
+            <div class="cam-time" id="camTime">--:--:--</div>
+        </div>
+
+        <div class="log-panel">
+            <div class="log-header">
+                <span class="log-title">Event Log</span>
+                <span class="log-count" id="logCount">0 events</span>
+            </div>
+            <ul class="log-list" id="eventLog">
+                <li class="log-empty">Waiting for events...</li>
+            </ul>
+        </div>
+    </div>
+</main>
+
+<script>
+    function updateClock() {
+        document.getElementById('camTime').textContent = new Date().toTimeString().slice(0, 8);
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    let failCount = 0;
+
+    function fetchStats() {
+        fetch('/api/stats')
+            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+            .then(data => {
+                failCount = 0;
+                setOnline(true);
+                document.getElementById('peopleCount').textContent = data.people_count;
+                document.getElementById('lastFace').textContent = data.last_face || 'No data';
+
+                const log = document.getElementById('eventLog');
+                const count = data.events ? data.events.length : 0;
+                document.getElementById('logCount').textContent =
+                    count + (count === 1 ? ' event' : ' events');
+
+                if (!count) {
+                    log.innerHTML = '<li class="log-empty">No events yet</li>';
+                    return;
+                }
+
+                const firstId = data.events[0]?.id;
+                if (firstId != null && log.dataset.firstId === String(firstId)) return;
+                log.dataset.firstId = firstId;
+                log.innerHTML = '';
+
+                data.events.forEach(ev => {
+                    const li = document.createElement('li');
+                    li.className = 'log-item';
+                    const isFace = ev.type === 'FACE_MATCH';
+                    li.innerHTML = `
+                        <span class="log-time">${ev.time}</span>
+                        <span class="log-badge ${isFace ? 'badge-alert' : 'badge-info'}">
+                            ${isFace ? 'ALERT' : 'INFO'}
+                        </span>
+                        <span class="log-text">
+                            ${isFace
+                                ? 'Recognized: <strong>' + escHtml(ev.details) + '</strong>'
+                                : 'People: ' + escHtml(ev.details)}
+                        </span>`;
+                    log.appendChild(li);
+                });
+            })
+            .catch(() => { if (++failCount >= 3) setOnline(false); });
+    }
+
+    function setOnline(online) {
+        const el  = document.getElementById('connectionStatus');
+        const txt = document.getElementById('statusText');
+        const sys = document.getElementById('systemStatus');
+        if (online) {
+            el.classList.remove('offline');
+            txt.textContent = sys.textContent = 'ONLINE';
+            sys.style.color = 'var(--green)';
+        } else {
+            el.classList.add('offline');
+            txt.textContent = sys.textContent = 'OFFLINE';
+            sys.style.color = 'var(--red)';
+        }
+    }
+
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    fetchStats();
+    setInterval(fetchStats, 3000);
+</script>
+
+</body>
+</html>
